@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/interpretar-audio.js",
+      "destination": "/api/interpretar-audio"
+    }
+  ]
+}

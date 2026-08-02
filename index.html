@@ -1,0 +1,2320 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<meta name="theme-color" content="#0F172A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mis Trabajos">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<title>Mis Trabajos - Gestión simple para emprendedores</title>
+
+<!-- 1. Cargamos el motor oficial de Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script>
+  // 2. Pegamos tus credenciales aquí mismo
+  const supabaseUrl = 'https://iqdtobtborwnytkcexff.supabase.co';
+  const supabaseKey = 'sb_publishable_xCRCmCF_huD2ed0D0IelvQ_WP1xM5Lg';
+  
+  // Creamos el conector oficial
+  const _supabase = supabase.createClient(supabaseUrl, supabaseKey, {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true
+    }
+  });
+</script>
+
+<!-- ============================================================ -->
+<!-- Tailwind CSS vía CDN (Play CDN). Extendemos el tema con una   -->
+<!-- pequeña paleta e tipografías propias para que la app no se    -->
+<!-- vea "genérica". Todo se puede tocar acá abajo.                -->
+<!-- ============================================================ -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          display: ['Sora', 'sans-serif'],   // Títulos / marca
+          sans: ['Inter', 'sans-serif'],     // Texto y datos
+        },
+        colors: {
+          // Paleta "libro contable digital": tinta oscura + acento índigo.
+          ink:     { 900:'#0F172A', 800:'#1E293B', 600:'#475569', 400:'#94A3B8' },
+          brand:   { 50:'#EEF2FF', 100:'#E0E7FF', 500:'#4F46E5', 600:'#4338CA', 700:'#3730A3' },
+          surface: '#F7F8FB',
+        },
+        boxShadow: {
+          card: '0 1px 2px 0 rgba(15,23,42,0.04), 0 1px 3px 0 rgba(15,23,42,0.06)',
+        }
+      }
+    }
+  }
+</script>
+
+<!-- Tipografías: Sora (display) + Inter (texto/datos) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+  /* Números tabulares para que las columnas de dinero queden alineadas */
+  .tabnum { font-variant-numeric: tabular-nums; }
+
+  /* Inputs "fantasma" dentro de las tablas: se ven como texto normal
+     hasta que el usuario hace foco, momento en el que revelan que son
+     editables. Esto evita que la tabla parezca un formulario gigante. */
+  .cell-input {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 0.375rem;
+    padding: 0.25rem 0.4rem;
+    width: 100%;
+    transition: background-color .12s ease, border-color .12s ease;
+  }
+  .cell-input:hover { background-color: #F1F5F9; }
+  .cell-input:focus {
+    outline: none;
+    background-color: #ffffff;
+    border-color: #4F46E5;
+    box-shadow: 0 0 0 3px rgba(79,70,229,0.12);
+  }
+
+  /* Scrollbar fina para las tablas en overflow-x */
+  .table-scroll::-webkit-scrollbar { height: 8px; }
+  .table-scroll::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 999px; }
+
+  /* Estado vacío con borde punteado */
+  .empty-state {
+    border: 1.5px dashed #CBD5E1;
+  }
+
+  /* Portada mobile-first. La gestión existente sigue disponible detrás. */
+  .home-shell { max-width: 32rem; margin-inline: auto; }
+  .app-desktop-nav { display: none; }
+  .home-summary,
+  .home-action { -webkit-tap-highlight-color: transparent; }
+  .home-summary:active,
+  .home-action:active { transform: scale(.99); }
+  @media (max-width: 640px) {
+    main { padding-bottom: 5.5rem !important; }
+  }
+</style>
+</head>
+
+<body class="bg-surface font-sans text-ink-800 min-h-screen">
+
+  <div id="aviso-actualizacion" class="hidden fixed left-1/2 bottom-4 z-[100] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-3 shadow-xl" role="status" aria-live="polite">
+    <div class="flex items-center justify-between gap-3">
+      <p class="text-sm font-medium text-ink-800">Hay una nueva versión disponible</p>
+      <button id="boton-actualizar-app" type="button" class="shrink-0 rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+        Actualizar
+      </button>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- PANTALLA DE LOGIN ("la puerta")                               -->
+  <!-- Único contenido visible mientras no hay sesión activa.        -->
+  <!-- verificarSesion() decide si esto se oculta a favor de         -->
+  <!-- #app-content, o se queda visible en solitario.                -->
+  <!-- ============================================================ -->
+  <div id="login-screen" class="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-ink-900 via-ink-800 to-brand-700 px-4">
+    <div class="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-8 text-center">
+      <div class="w-14 h-14 rounded-xl bg-brand-500 flex items-center justify-center mx-auto mb-5">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 3v18h18M7 15l3-3 3 3 5-6"/>
+        </svg>
+      </div>
+      <h1 class="font-display font-bold text-xl text-ink-900 mb-1">Mis Trabajos</h1>
+      <p class="text-ink-400 text-sm mb-8">Organizá tus trabajos, entregas y cobros en un solo lugar</p>
+
+      <button onclick="iniciarSesionGoogle()"
+        class="w-full flex items-center justify-center gap-3 bg-white border border-slate-300 hover:bg-slate-50 hover:shadow-md text-ink-800 font-semibold text-sm rounded-lg px-4 py-3 transition-all">
+        <svg class="w-5 h-5 shrink-0" viewBox="0 0 48 48">
+          <path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12s5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24s8.955,20,20,20s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/>
+          <path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/>
+          <path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z"/>
+          <path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571c0.001-0.001,0.002-0.001,0.003-0.002l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z"/>
+        </svg>
+        Continuar con Google
+      </button>
+
+      <p class="text-[11px] text-ink-400 mt-6">Acceso restringido — solo cuentas autorizadas</p>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- CONTENIDO DE LA APP (oculto hasta confirmar sesión activa)    -->
+  <!-- ============================================================ -->
+  <div id="app-content" class="hidden">
+
+  <!-- ============================================================ -->
+  <!-- ENCABEZADO                                                    -->
+  <!-- ============================================================ -->
+  <header class="bg-ink-900 text-white">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <!-- Icono de marca (libro / balance) -->
+        <div class="w-9 h-9 rounded-lg bg-brand-500 flex items-center justify-center shrink-0">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 3v18h18M7 15l3-3 3 3 5-6"/>
+          </svg>
+        </div>
+        <h1 class="font-display font-bold text-lg sm:text-xl leading-tight">Mis Trabajos</h1>
+      </div>
+      <div class="relative">
+        <button
+          type="button"
+          id="boton-menu-app"
+          aria-label="Abrir menú"
+          aria-expanded="false"
+          onclick="alternarMenuApp(event)"
+          class="w-9 h-9 flex items-center justify-center text-xl leading-none text-ink-200 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+        >
+          ☰
+        </button>
+
+        <div
+          id="menu-app"
+          class="hidden absolute right-0 top-full mt-2 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white text-ink-900 shadow-xl z-50"
+        >
+          <button
+            type="button"
+            onclick="cerrarMenuApp(); cerrarSesion();"
+            class="w-full px-4 py-3 text-left text-sm font-medium hover:bg-slate-50 transition-colors"
+          >
+            Cerrar sesión
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============================================================ -->
+  <!-- NAVEGACIÓN POR PESTAÑAS                                       -->
+  <!-- ============================================================ -->
+  <nav class="app-desktop-nav bg-white border-b border-slate-200 sticky top-0 z-20 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6">
+      <div class="flex gap-1 overflow-x-auto">
+        <button data-tab="inicio" onclick="cambiarPestana('inicio')"
+          class="tab-btn flex items-center gap-2 px-4 py-3 border-b-2 font-medium text-sm whitespace-nowrap transition-colors">
+          Inicio
+        </button>
+        <button data-tab="ventas" onclick="cambiarPestana('ventas')"
+          class="tab-btn flex items-center gap-2 px-4 py-3 border-b-2 font-medium text-sm whitespace-nowrap transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+          </svg>
+          Gestión de Ventas
+        </button>
+        <button data-tab="marketing" onclick="cambiarPestana('marketing')"
+          class="tab-btn flex items-center gap-2 px-4 py-3 border-b-2 font-medium text-sm whitespace-nowrap transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/>
+          </svg>
+          Marketing y ROI
+        </button>
+        <button data-tab="finanzas" onclick="cambiarPestana('finanzas')"
+          class="tab-btn flex items-center gap-2 px-4 py-3 border-b-2 font-medium text-sm whitespace-nowrap transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+          </svg>
+          Finanzas Mensuales
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ============================================================ -->
+  <!-- CONTENIDO PRINCIPAL                                           -->
+  <!-- ============================================================ -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+
+    <!-- PORTADA SIMPLE: resumen compacto y menú principal -->
+    <section id="tab-inicio" class="tab-panel home-shell">
+      <h2 id="home-saludo" class="font-display font-bold text-2xl text-ink-900 mb-6">Hola 👋</h2>
+
+      <div class="space-y-1 mb-6" aria-label="Resumen de trabajos">
+        <button type="button" onclick="abrirTrabajos('pendientes')" class="home-summary w-full flex items-center justify-between rounded-lg px-2 py-2 text-left hover:bg-white transition-colors">
+          <span class="text-ink-700">Pendientes</span>
+          <strong id="home-pendientes" class="tabnum text-ink-900">0</strong>
+        </button>
+        <button type="button" onclick="abrirTrabajos('proceso')" class="home-summary w-full flex items-center justify-between rounded-lg px-2 py-2 text-left hover:bg-white transition-colors">
+          <span class="text-ink-700">En proceso</span>
+          <strong id="home-proceso" class="tabnum text-ink-900">0</strong>
+        </button>
+        <button type="button" onclick="abrirTrabajos('listos')" class="home-summary w-full flex items-center justify-between rounded-lg px-2 py-2 text-left hover:bg-white transition-colors">
+          <span class="text-ink-700">Prontos</span>
+          <strong id="home-listos" class="tabnum text-ink-900">0</strong>
+        </button>
+        <button type="button" onclick="abrirTrabajos('cobros')" class="home-summary w-full flex items-center justify-between rounded-lg px-2 py-2 text-left hover:bg-white transition-colors">
+          <span class="text-ink-700">Por cobrar</span>
+          <strong id="home-cobros" class="tabnum text-ink-900">$0,00</strong>
+        </button>
+      </div>
+
+      <div class="border-t border-slate-300 pt-6 space-y-3">
+        <button type="button" onclick="accionPrincipal('crear')" class="home-action w-full flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-left font-semibold text-ink-900 shadow-sm hover:border-brand-300 hover:bg-brand-50 transition-all">
+          <span aria-hidden="true">➕</span><span>Crear trabajo</span>
+        </button>
+        <button type="button" onclick="accionPrincipal('modificar')" class="home-action w-full flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-left font-semibold text-ink-900 shadow-sm hover:border-brand-300 hover:bg-brand-50 transition-all">
+          <span aria-hidden="true">🔎</span><span>Buscar o modificar trabajo</span>
+        </button>
+        <button type="button" onclick="abrirTrabajos('cobros')" class="home-action w-full flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-left font-semibold text-ink-900 shadow-sm hover:border-brand-300 hover:bg-brand-50 transition-all">
+          <span aria-hidden="true">💵</span><span>Registrar pago</span>
+        </button>
+        <button type="button" onclick="abrirTrabajos('pendientes')" class="home-action w-full flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-left font-semibold text-ink-900 shadow-sm hover:border-brand-300 hover:bg-brand-50 transition-all">
+          <span aria-hidden="true">📋</span><span>Ver pendientes</span>
+        </button>
+        <button type="button" onclick="abrirRegistroGasto()" class="home-action w-full flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-left font-semibold text-ink-900 shadow-sm hover:border-brand-300 hover:bg-brand-50 transition-all">
+          <span aria-hidden="true">💸</span><span>Registrar gasto</span>
+        </button>
+        <button type="button" onclick="cambiarPestana('finanzas')" class="home-action w-full flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-left font-semibold text-ink-900 shadow-sm hover:border-brand-300 hover:bg-brand-50 transition-all">
+          <span aria-hidden="true">📈</span><span>Finanzas</span>
+        </button>
+      </div>
+    </section>
+
+    <div id="modal-detalle-trabajo" class="hidden fixed inset-0 z-50 bg-black/40 p-4 overflow-y-auto" onclick="cerrarDetalleTrabajo(event)">
+  <div class="bg-white max-w-md mx-auto my-8 rounded-2xl shadow-xl overflow-hidden" role="dialog" aria-modal="true" aria-labelledby="titulo-detalle-trabajo" onclick="event.stopPropagation()">
+
+    <div class="flex items-center justify-between p-4 border-b border-slate-200">
+      <h2 id="titulo-detalle-trabajo" class="font-display font-semibold text-lg">Detalle del trabajo</h2>
+
+      <button
+        type="button"
+        onclick="cerrarDetalleTrabajo()"
+        aria-label="Cerrar detalle"
+        class="text-2xl leading-none text-slate-400 hover:text-slate-700"
+      >
+        ×
+      </button>
+    </div>
+
+    <div id="contenido-detalle-trabajo" class="p-4"></div>
+
+  </div>
+</div>
+
+    <div id="modal-lista-trabajos" class="hidden fixed inset-0 z-40 bg-black/40 p-4 overflow-y-auto" onclick="cerrarListaTrabajos(event)">
+      <div class="bg-white max-w-md mx-auto my-8 rounded-2xl shadow-xl overflow-hidden" role="dialog" aria-modal="true" aria-labelledby="titulo-lista-trabajos" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-between p-4 border-b border-slate-200">
+          <h2 id="titulo-lista-trabajos" class="font-display font-semibold text-lg">Trabajos</h2>
+          <button type="button" onclick="cerrarListaTrabajos()" aria-label="Cerrar lista" class="text-2xl leading-none text-slate-400 hover:text-slate-700">×</button>
+        </div>
+        <div id="contenido-lista-trabajos" class="divide-y divide-slate-100"></div>
+      </div>
+    </div>
+
+    <!-- Flujo IA para crear trabajos: elegir entrada, grabar y confirmar. -->
+    <div id="modal-crear-trabajo" class="hidden fixed inset-0 z-[60] bg-black/40 p-4 overflow-y-auto" onclick="cerrarFlujoCrearTrabajo(event)">
+      <div class="bg-white max-w-md mx-auto my-8 rounded-2xl shadow-xl overflow-hidden" role="dialog" aria-modal="true" aria-labelledby="titulo-crear-trabajo" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-between p-4 border-b border-slate-200">
+          <h2 id="titulo-crear-trabajo" class="font-display font-semibold text-lg">Crear trabajo</h2>
+          <button type="button" onclick="cerrarFlujoCrearTrabajo()" aria-label="Cerrar" class="text-2xl leading-none text-slate-400 hover:text-slate-700">&times;</button>
+        </div>
+        <div id="crear-trabajo-eleccion" class="p-4 space-y-3">
+          <p class="text-sm text-ink-600">Elegí cómo querés cargar el trabajo.</p>
+          <button type="button" onclick="iniciarGrabacionTrabajo()" class="w-full rounded-xl bg-brand-600 px-4 py-3.5 text-left font-semibold text-white hover:bg-brand-700">🎤 Grabar audio</button>
+          <button type="button" onclick="abrirCargaManualTrabajo()" class="w-full rounded-xl border border-slate-300 bg-white px-4 py-3.5 text-left font-semibold text-ink-900 hover:bg-slate-50">⌨️ Cargar manualmente</button>
+          <p class="text-xs text-ink-400">Nada se guardará hasta que revises y confirmes los datos.</p>
+        </div>
+        <div id="crear-trabajo-grabacion" class="hidden p-4 space-y-4 text-center">
+          <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-100 text-2xl" aria-hidden="true">🎤</div>
+          <div>
+            <p id="estado-grabacion" class="font-semibold text-ink-900">Grabando…</p>
+            <p id="duracion-grabacion" class="tabnum mt-1 text-2xl font-bold text-red-600">00:00</p>
+            <p class="mt-2 text-xs text-ink-400">Decí cliente, trabajo, costo, precio, seña, entrega y observaciones.</p>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <button type="button" onclick="cancelarGrabacionTrabajo()" class="rounded-xl border border-slate-300 px-4 py-3 font-semibold text-ink-700 hover:bg-slate-50">Cancelar</button>
+            <button type="button" onclick="detenerGrabacionTrabajo()" class="rounded-xl bg-red-600 px-4 py-3 font-semibold text-white hover:bg-red-700">Detener</button>
+          </div>
+        </div>
+        <div id="crear-trabajo-procesando" class="hidden p-8 text-center" role="status" aria-live="polite">
+          <div class="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-brand-100 border-t-brand-600"></div>
+          <p class="font-semibold text-ink-900">Interpretando el audio…</p>
+          <p class="mt-1 text-xs text-ink-400">Puede demorar unos segundos.</p>
+        </div>
+        <form id="form-confirmacion-ia" class="hidden p-4 space-y-3" onsubmit="confirmarTrabajoIA(event)">
+          <div class="rounded-xl bg-brand-50 p-3 text-sm text-brand-700">Revisá y corregí lo necesario antes de guardar.</div>
+          <div><label class="block text-xs font-medium text-ink-600 mb-1">Cliente *</label><input required id="ia-cliente" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2"></div>
+          <div><label class="block text-xs font-medium text-ink-600 mb-1">Trabajo *</label><input required id="ia-trabajo" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2"></div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="block text-xs font-medium text-ink-600 mb-1">Costo</label><input id="ia-costo" type="number" min="0" step="0.01" class="w-full rounded-lg border border-slate-300 px-3 py-2"></div>
+            <div><label class="block text-xs font-medium text-ink-600 mb-1">Precio</label><input id="ia-precio" type="number" min="0" step="0.01" class="w-full rounded-lg border border-slate-300 px-3 py-2"></div>
+            <div><label class="block text-xs font-medium text-ink-600 mb-1">Seña</label><input id="ia-sena" type="number" min="0" step="0.01" class="w-full rounded-lg border border-slate-300 px-3 py-2"></div>
+            <div><label class="block text-xs font-medium text-ink-600 mb-1">Entrega</label><input id="ia-fecha-entrega" type="date" class="w-full rounded-lg border border-slate-300 px-3 py-2"></div>
+          </div>
+          <div><label class="block text-xs font-medium text-ink-600 mb-1">Observaciones</label><textarea id="ia-observaciones" rows="3" class="w-full rounded-lg border border-slate-300 px-3 py-2"></textarea></div>
+          <div id="error-crear-trabajo" class="hidden rounded-xl bg-red-50 p-3 text-sm text-red-700" role="alert"></div>
+          <div class="grid grid-cols-2 gap-3 pt-2">
+            <button type="button" onclick="volverEleccionCrearTrabajo()" class="rounded-xl border border-slate-300 px-4 py-3 font-semibold text-ink-700 hover:bg-slate-50">Cancelar</button>
+            <button id="boton-confirmar-ia" type="submit" class="rounded-xl bg-brand-600 px-4 py-3 font-semibold text-white hover:bg-brand-700">Guardar trabajo</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ========================================================== -->
+    <!-- PESTAÑA 1: GESTIÓN DE VENTAS                                -->
+    <!-- ========================================================== -->
+    <section id="tab-ventas" class="tab-panel space-y-5 hidden">
+
+      <!-- Tarjetas resumen rápido -->
+      <div id="ventas-stats" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
+
+      <!-- Formulario alta de venta -->
+      <div class="bg-white rounded-xl shadow-card border border-slate-200 p-4 sm:p-5">
+        <div class="flex items-center justify-between gap-3 mb-3">
+          <h2 class="font-display font-semibold text-ink-900">Crear nuevo trabajo</h2>
+          <button type="button" onclick="cambiarPestana('inicio')" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-brand-600 hover:bg-brand-50 transition-colors">← Volver al inicio</button>
+        </div>
+        <form id="form-venta" onsubmit="guardarNuevaVenta(event)" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-9 gap-3">
+          <div class="col-span-2 sm:col-span-1">
+            <label class="block text-xs font-medium text-ink-600 mb-1">Fecha de venta</label>
+            <input required type="date" id="nv-fecha" class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+          </div>
+          <div class="col-span-2 sm:col-span-1">
+            <label class="block text-xs font-medium text-ink-600 mb-1">Nombre del cliente</label>
+            <input required type="text" id="nv-cliente" placeholder="Ej: Juan Pérez" class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+          </div>
+          <div class="col-span-2 sm:col-span-1">
+            <label class="block text-xs font-medium text-ink-600 mb-1">Trabajo</label>
+            <input required type="text" id="nv-producto" placeholder="Ej: Mesa de comedor" class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-ink-600 mb-1">Costo</label>
+            <input required type="number" step="0.01" min="0" id="nv-costo" placeholder="0.00" class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-ink-600 mb-1">PVP</label>
+            <input required type="number" step="0.01" min="0" id="nv-pvp" placeholder="0.00" class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-ink-600 mb-1">Seña</label>
+            <input type="number" step="0.01" min="0" id="nv-sena" placeholder="0.00" class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+          </div>
+          <div class="col-span-2 sm:col-span-1">
+            <label class="block text-xs font-medium text-ink-600 mb-1">Entrega estimada</label>
+            <input type="date" id="nv-entrega" class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+          </div>
+          <div class="flex items-end gap-2 col-span-2 sm:col-span-1">
+            <label class="flex items-center gap-2 text-xs font-medium text-ink-600 border border-slate-300 rounded-lg px-2 py-2 w-full cursor-pointer select-none">
+              <input type="checkbox" id="nv-publicidad" class="rounded text-brand-500 focus:ring-brand-500">
+              ¿Publicidad?
+            </label>
+          </div>
+          <div class="col-span-2 sm:col-span-3 lg:col-span-9">
+            <label class="block text-xs font-medium text-ink-600 mb-1">Observaciones (opcional)</label>
+            <input type="text" id="nv-observaciones" placeholder="Ej: Ya está pago y pronto, falta entregar" class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+          </div>
+          <div class="flex items-end col-span-2 sm:col-span-3 lg:col-span-1">
+            <button type="submit" class="w-full bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-lg px-3 py-2 transition-colors flex items-center justify-center gap-1.5">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+              Agregar
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Tabla de ventas -->
+      <div class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden">
+        <div class="flex items-center justify-between p-4 sm:p-5 pb-3">
+          <div>
+            <h2 class="font-display font-semibold text-ink-900">Todos los trabajos</h2>
+            <p class="text-xs text-ink-400">Marcar <span class="font-semibold text-ink-600">¿Entregado?</span> suma el PVP como ingreso automático en Finanzas, en el mes de la fecha de venta</p>
+          </div>
+          <button onclick="exportarVentasCSV()" class="flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:text-brand-700 border border-brand-200 hover:bg-brand-50 rounded-lg px-3 py-1.5 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            Exportar CSV
+          </button>
+        </div>
+        <div class="table-scroll overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+    <thead>
+        <tr>
+            <th>Fecha Venta</th>
+            <th>Cliente</th>
+            <th>Trabajo</th>
+            <th>Costo</th>
+            <th>PVP</th>
+            <th>Seña</th>
+            <th>Saldo</th>
+            <th>Entrega Est.</th>
+            <th>Estado</th>
+            <th>¿Publicidad?</th>
+            <th>¿Entregado?</th>
+            <th>Observaciones</th>
+            <th>Acciones</th>
+        </tr>
+    </thead>
+    <!-- Aquí se pintarán las filas de manera ordenada en columnas -->
+    <tbody id="ventas-tbody" class="divide-y divide-slate-100"></tbody>
+</table>
+
+<!-- Este div es el que avisa cuando está vacío -->
+<div id="vacio" class="hidden m-4 rounded-lg p-8 text-center text-ink-400 text-sm">
+    Todavía no hay ventas registradas. Agregá la primera con el formulario de arriba.
+</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================== -->
+    <!-- PESTAÑA 2: MARKETING Y ROI                                  -->
+    <!-- ========================================================== -->
+    <section id="tab-marketing" class="tab-panel space-y-5 hidden">
+
+      <!-- Tarjetas de ROI en tiempo real -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div class="bg-white rounded-xl shadow-card border border-slate-200 p-4">
+          <p class="text-xs font-medium text-ink-400 uppercase tracking-wide">Ganancia bruta (ventas de publicidad)</p>
+          <p id="mk-ganancia-bruta" class="tabnum font-display font-bold text-2xl text-ink-900 mt-1">$0.00</p>
+          <p class="text-xs text-ink-400 mt-1">Suma de (PVP - Costo) de ventas marcadas como publicidad</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-card border border-slate-200 p-4">
+          <p class="text-xs font-medium text-ink-400 uppercase tracking-wide">Gasto en publicidad</p>
+          <p id="mk-gasto-total" class="tabnum font-display font-bold text-2xl text-red-600 mt-1">$0.00</p>
+          <p class="text-xs text-ink-400 mt-1">Total invertido según registro de abajo</p>
+        </div>
+        <div class="bg-brand-500 rounded-xl shadow-card p-4 text-white">
+          <p class="text-xs font-medium text-brand-100 uppercase tracking-wide">Margen real</p>
+          <p id="mk-margen-real" class="tabnum font-display font-bold text-2xl mt-1">$0.00</p>
+          <p class="text-xs text-brand-100 mt-1">Ganancia bruta - Gasto en publicidad</p>
+        </div>
+      </div>
+
+      <!-- Tabla de ventas provenientes de publicidad (solo lectura) -->
+      <div class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden">
+        <div class="flex items-center justify-between p-4 sm:p-5 pb-3">
+          <div>
+            <h2 class="font-display font-semibold text-ink-900">Ventas (vista de solo lectura)</h2>
+            <p class="text-xs text-ink-400">Se completa automáticamente desde la tabla ventas_taller en Supabase</p>
+          </div>
+          <button onclick="exportarVentasPublicidadCSV()" class="flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:text-brand-700 border border-brand-200 hover:bg-brand-50 rounded-lg px-3 py-1.5 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            Exportar CSV
+          </button>
+        </div>
+        <div class="table-scroll overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-xs uppercase tracking-wide text-ink-400 border-y border-slate-200 bg-slate-50">
+                <th class="px-3 py-2.5 min-w-[130px]">Fecha</th>
+                <th class="px-3 py-2.5 min-w-[160px]">Producto</th>
+                <th class="px-3 py-2.5 min-w-[160px]">¿Proviene de publicidad?</th>
+              </tr>
+            </thead>
+            <tbody id="marketing-tbody" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+        <div id="marketing-empty" class="hidden empty-state m-4 rounded-lg p-8 text-center text-ink-400 text-sm">
+          Todavía no hay ventas cargadas.
+        </div>
+      </div>
+
+      <!-- Registro de gasto de publicidad -->
+      <div class="bg-white rounded-xl shadow-card border border-slate-200 p-4 sm:p-5">
+        <h2 class="font-display font-semibold text-ink-900 mb-3">Registrar gasto de publicidad</h2>
+        <form id="form-publicidad" onsubmit="agregarGastoPublicidad(event)" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-ink-600 mb-1">Fecha de carga</label>
+            <input required type="date" id="pu-fecha" class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+          </div>
+          <div class="col-span-2 sm:col-span-2">
+            <label class="block text-xs font-medium text-ink-600 mb-1">Descripción (opcional)</label>
+            <input type="text" id="pu-descripcion" placeholder="Ej: Campaña Instagram julio" class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-ink-600 mb-1">Monto</label>
+            <input required type="number" step="0.01" min="0" id="pu-monto" placeholder="0.00" class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+          </div>
+          <div class="col-span-2 sm:col-span-4">
+            <button type="submit" class="bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-lg px-4 py-2 transition-colors flex items-center justify-center gap-1.5">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+              Agregar gasto
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Tabla de gastos de publicidad -->
+      <div class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden">
+        <div class="flex items-center justify-between p-4 sm:p-5 pb-3">
+          <h2 class="font-display font-semibold text-ink-900">Gastos de publicidad cargados</h2>
+          <button onclick="exportarGastosPublicidadCSV()" class="flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:text-brand-700 border border-brand-200 hover:bg-brand-50 rounded-lg px-3 py-1.5 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            Exportar CSV
+          </button>
+        </div>
+        <div class="table-scroll overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-xs uppercase tracking-wide text-ink-400 border-y border-slate-200 bg-slate-50">
+                <th class="px-3 py-2.5 min-w-[130px]">Fecha de carga</th>
+                <th class="px-3 py-2.5 min-w-[200px]">Descripción</th>
+                <th class="px-3 py-2.5 min-w-[100px]">Monto</th>
+                <th class="px-3 py-2.5 min-w-[50px]"></th>
+              </tr>
+            </thead>
+            <tbody id="publicidad-tbody" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+        <div id="publicidad-empty" class="hidden empty-state m-4 rounded-lg p-8 text-center text-ink-400 text-sm">
+          Todavía no cargaste gastos de publicidad.
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================== -->
+    <!-- PESTAÑA 3: FINANZAS MENSUALES                               -->
+    <!-- ========================================================== -->
+    <section id="tab-finanzas" class="tab-panel space-y-5 hidden">
+
+      <div class="flex justify-end">
+        <button type="button" onclick="cambiarPestana('inicio')" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-brand-600 hover:bg-brand-50 transition-colors">
+          ← Volver al inicio
+        </button>
+      </div>
+
+      <!-- Filtro de mes/año + resumen -->
+      <div class="bg-white rounded-xl shadow-card border border-slate-200 p-4 sm:p-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 class="font-display font-semibold text-ink-900">Resumen del período</h2>
+            <p class="text-xs text-ink-400">Ingreso = PVP de ventas entregadas ese mes - Gasto = movimientos cargados abajo</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <label for="fz-filtro-mes" class="text-xs font-medium text-ink-600">Mostrar período:</label>
+            <select id="fz-filtro-mes" onchange="cambiarFiltroMes(this.value)" class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500"></select>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div class="rounded-lg bg-green-50 border border-green-200 p-4">
+            <p class="text-xs font-medium text-green-700 uppercase tracking-wide">Ingreso total</p>
+            <p id="fz-ingreso-total" class="tabnum font-display font-bold text-2xl text-green-700 mt-1">$0.00</p>
+          </div>
+          <div class="rounded-lg bg-red-50 border border-red-200 p-4">
+            <p class="text-xs font-medium text-red-700 uppercase tracking-wide">Gasto total</p>
+            <p id="fz-gasto-total" class="tabnum font-display font-bold text-2xl text-red-700 mt-1">$0.00</p>
+          </div>
+          <div id="fz-balance-card" class="rounded-lg bg-slate-50 border border-slate-200 p-4">
+            <p class="text-xs font-medium text-ink-600 uppercase tracking-wide">Balance neto</p>
+            <p id="fz-balance-neto" class="tabnum font-display font-bold text-2xl text-ink-900 mt-1">$0.00</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Formulario alta de gasto -->
+      <div class="bg-white rounded-xl shadow-card border border-slate-200 p-4 sm:p-5">
+        <h2 class="font-display font-semibold text-ink-900 mb-3">Registrar gasto</h2>
+        <p class="text-xs text-ink-400 -mt-2 mb-3">Los ingresos no se cargan acá: se calculan solos desde la pestaña de Ventas.</p>
+        <form id="form-gasto" onsubmit="agregarGasto(event)" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-ink-600 mb-1">Fecha</label>
+            <input required type="date" id="fz-fecha" class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-ink-600 mb-1">Categoría</label>
+            <select id="fz-categoria" class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+              <option value="Materiales">Materiales</option>
+              <option value="Herramientas">Herramientas</option>
+              <option value="Otros">Otros</option>
+            </select>
+          </div>
+          <div class="col-span-2 sm:col-span-1 lg:col-span-2">
+            <label class="block text-xs font-medium text-ink-600 mb-1">Descripción</label>
+            <input required type="text" id="fz-descripcion" placeholder="Ej: Alquiler del taller" class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-ink-600 mb-1">Monto</label>
+            <input required type="number" step="0.01" min="0" id="fz-monto" placeholder="0.00" class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+          </div>
+          <div class="col-span-2 sm:col-span-4 lg:col-span-5">
+            <button type="submit" class="bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-lg px-4 py-2 transition-colors flex items-center justify-center gap-1.5">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+              Agregar gasto
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Tabla de movimientos del período filtrado -->
+      <div class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden">
+        <div class="flex items-center justify-between p-4 sm:p-5 pb-3">
+          <div>
+            <h2 id="fz-tabla-titulo" class="font-display font-semibold text-ink-900">Movimientos</h2>
+            <p class="text-xs text-ink-400">Los ingresos marcados <span class="text-brand-500 font-semibold">(auto)</span> vienen de ventas entregadas en la pestaña de Ventas</p>
+          </div>
+          <button onclick="exportarFinanzasCSV()" class="flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:text-brand-700 border border-brand-200 hover:bg-brand-50 rounded-lg px-3 py-1.5 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            Exportar CSV
+          </button>
+        </div>
+        <div class="table-scroll overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-xs uppercase tracking-wide text-ink-400 border-y border-slate-200 bg-slate-50">
+                <th class="px-3 py-2.5 min-w-[130px]">Fecha</th>
+                <th class="px-3 py-2.5 min-w-[130px]">Categoría</th>
+                <th class="px-3 py-2.5 min-w-[220px]">Descripción</th>
+                <th class="px-3 py-2.5 min-w-[110px]">Monto</th>
+                <th class="px-3 py-2.5 min-w-[50px]"></th>
+              </tr>
+            </thead>
+            <tbody id="finanzas-tbody" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+        <div id="finanzas-empty" class="hidden empty-state m-4 rounded-lg p-8 text-center text-ink-400 text-sm">
+          No hay movimientos para este período.
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="max-w-7xl mx-auto px-4 sm:px-6 py-8 text-center text-xs text-ink-400">
+    Mis Trabajos · Datos sincronizados de forma segura en la nube.
+  </footer>
+
+  </div> <!-- /#app-content -->
+
+<script>
+/* ================================================================
+   ARQUITECTURA DE DATOS
+   ----------------------------------------------------------------
+   Toda la persistencia vive en Supabase, en tres tablas:
+
+     - ventas_taller     (id, fecha_venta, producto, costo, pvp, sena,
+                           fecha_entrega, estado, origen_publicidad,
+                           entregado, observaciones)
+     - gastos_taller      (id, fecha, categoria, descripcion, monto)
+     - gastos_publicidad  (id, fecha, descripcion, monto)
+
+   Ya NO existe `dataNegocio` ni `localStorage`. En su lugar hay un
+   único objeto en memoria, `estadoApp`, que funciona como una CACHÉ
+   de lo último que devolvió Supabase. Esa caché es la que leen los
+   renders de Marketing y Finanzas para calcular sus métricas, así
+   evitamos disparar un `select` a la base de datos cada vez que el
+   usuario tilda un checkbox o cambia de pestaña.
+
+   Regla general de sincronización:
+   Cada operación de escritura (insert/update/delete) primero le
+   pide el cambio a Supabase y, SOLO si responde sin error, vuelve a
+   pedir los datos frescos con la función `cargarX()` correspondiente
+   y repinta el DOM. Si Supabase devuelve un error, no se toca la
+   caché ni el DOM: se avisa el problema y listo.
+
+   Nota importante sobre `ventas_taller`: al insertar una fila nueva
+   NUNCA se envían los campos `id` ni `created_at` — Supabase los
+   genera solo. El campo se llama `sena` (sin ñ) en la base.
+
+   Los "Ingresos" de Finanzas NUNCA se guardan como registros propios
+   en `gastos_taller`: se recalculan siempre a partir de
+   `estadoApp.ventas` (ver mergeFinanzas más abajo), filtrando las
+   ventas marcadas como "Entregado". Por eso tildar/destildar esa
+   casilla en Ventas suma o resta el ingreso al instante en Finanzas.
+   ================================================================ */
+
+/* ================================================================
+   AUTENTICACIÓN CON GOOGLE (SUPABASE AUTH)
+   ----------------------------------------------------------------
+   - iniciarSesionGoogle(): dispara el login OAuth con Google. El
+     navegador redirige a Google y, tras autenticar, vuelve solo a
+     esta misma página.
+   - cerrarSesion(): cierra la sesión en Supabase y recarga la app;
+     al recargar, verificarSesion() vuelve a mostrar #login-screen.
+   - verificarSesion(): puerta de entrada real de la app. Corre en
+     DOMContentLoaded (reemplaza la vieja llamada directa a
+     inicializar()) y decide qué pantalla mostrar según haya o no
+     sesión activa.
+   ================================================================ */
+async function iniciarSesionGoogle() {
+ const { error } = await _supabase.auth.signInWithOAuth({
+  provider: 'google',
+  options: {
+    redirectTo: window.location.origin
+  }
+});
+  if (error) {
+    console.error('Error al iniciar sesión con Google:', error.message);
+    alert('No se pudo iniciar sesión con Google. Intentá de nuevo.');
+  }
+}
+
+function alternarMenuApp(event) {
+  event?.stopPropagation();
+
+  const menu = document.getElementById('menu-app');
+  const boton = document.getElementById('boton-menu-app');
+  if (!menu || !boton) return;
+
+  const seAbrira = menu.classList.contains('hidden');
+  menu.classList.toggle('hidden', !seAbrira);
+  boton.setAttribute('aria-expanded', String(seAbrira));
+}
+
+function cerrarMenuApp() {
+  const menu = document.getElementById('menu-app');
+  const boton = document.getElementById('boton-menu-app');
+
+  menu?.classList.add('hidden');
+  boton?.setAttribute('aria-expanded', 'false');
+}
+
+document.addEventListener('click', (event) => {
+  const menu = document.getElementById('menu-app');
+  const boton = document.getElementById('boton-menu-app');
+
+  if (menu && boton && !menu.contains(event.target) && !boton.contains(event.target)) {
+    cerrarMenuApp();
+  }
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') cerrarMenuApp();
+});
+
+async function cerrarSesion() {
+  await _supabase.auth.signOut();
+  location.reload();
+}
+
+async function verificarSesion() {
+  const loginScreen = document.getElementById('login-screen');
+  const appContent = document.getElementById('app-content');
+
+  const mostrarLogin = () => {
+    loginScreen.classList.remove('hidden');
+    appContent.classList.add('hidden');
+  };
+
+  let { data: { session }, error } = await _supabase.auth.getSession();
+
+  if (error) {
+    console.warn('No se pudo recuperar la sesión:', error.message);
+    await _supabase.auth.signOut({ scope: 'local' });
+    mostrarLogin();
+    return;
+  }
+
+  if (session) {
+    const { data, error: refreshError } = await _supabase.auth.refreshSession();
+
+    if (refreshError || !data.session) {
+      console.warn('La sesión venció y no pudo renovarse. Se solicitará iniciar sesión nuevamente.');
+      await _supabase.auth.signOut({ scope: 'local' });
+      mostrarLogin();
+      return;
+    }
+
+    session = data.session;
+  }
+
+  if (session) {
+    loginScreen.classList.add('hidden');
+    appContent.classList.remove('hidden');
+    await inicializar(); // internamente llama a cargarVentas(), además de cargarGastos()/cargarPublicidad() y precargar los <input type="date">
+  } else {
+    mostrarLogin();
+  }
+}
+
+const CONFIG = {
+  currencySymbol: '$',
+  locale: 'es-UY', // Formato numérico (separador de miles/decimales)
+};
+
+/* Estados posibles de una venta y su color asociado. Para agregar o
+   quitar un estado, o cambiar un color, editá este array. */
+const ESTADOS = [
+  { value: 'En Lista',   classes: 'bg-red-100 text-red-800 border-red-300 focus:ring-red-400',       dot: 'bg-red-500'    },
+  { value: 'En Proceso', classes: 'bg-yellow-100 text-yellow-800 border-yellow-300 focus:ring-yellow-400', dot: 'bg-yellow-500' },
+  { value: 'Pronto',     classes: 'bg-green-100 text-green-800 border-green-300 focus:ring-green-400',   dot: 'bg-green-500'  },
+];
+
+/* Categorías de gastos manuales en Finanzas. Los ingresos NO están acá
+   a propósito: son siempre automáticos, calculados desde Ventas. */
+const CATEGORIAS_GASTOS = ['Materiales', 'Herramientas', 'Otros'];
+
+/* ================================================================
+   ESTADO EN MEMORIA (caché de lo último que devolvió Supabase)
+   ================================================================ */
+let estadoApp = { ventas: [], gastos: [], publicidad: [] };
+
+// Período actualmente elegido en el selector de Finanzas.
+// mes: 1-12, anio: número de 4 dígitos. O bien mes==='all' && anio==='all'.
+let filtroActual = { mes: 'all', anio: 'all' };
+
+/* ================================================================
+   UTILIDADES DE FORMATO
+   ================================================================ */
+function formatearMonto(n) {
+  const num = Number(n) || 0;
+  return CONFIG.currencySymbol + num.toLocaleString(CONFIG.locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Convierte 'YYYY-MM-DD' -> 'DD/MM/YYYY' para mostrar en pantalla
+function formatearFecha(isoDate) {
+  if (!isoDate) return '-';
+  const [y, m, d] = isoDate.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function obtenerMesAnioActual() {
+  const hoy = new Date();
+  return { mes: hoy.getMonth() + 1, anio: hoy.getFullYear() };
+}
+
+// Etiqueta legible en español para un mes/año, ej: "Julio 2026"
+function etiquetaMes(mes, anio) {
+  const fecha = new Date(anio, mes - 1, 1);
+  const texto = fecha.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
+}
+
+function obtenerConfigEstado(value) {
+  return ESTADOS.find(e => e.value === value) || ESTADOS[0];
+}
+
+/* ================================================================
+   SEGURIDAD BÁSICA DE RENDERIZADO
+   Evita que texto ingresado por el usuario rompa el HTML de las
+   tablas (inyección accidental de etiquetas).
+   ================================================================ */
+function escaparHtml(str) {
+  if (str === undefined || str === null) return '';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+/* ================================================================
+   EXPORTACIÓN A CSV
+   Las fechas se envuelven como ="DD/MM/YYYY" para que Excel/Sheets
+   las trate siempre como texto y no las reinterprete.
+   ================================================================ */
+function escaparCSV(value) {
+  const str = String(value ?? '');
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return '"' + str.replace(/"/g, '""') + '"';
+  }
+  return str;
+}
+
+function fechaCSV(isoDate) {
+  if (!isoDate) return '';
+  return `="${formatearFecha(isoDate)}"`;
+}
+
+function descargarCSV(filename, headers, rows) {
+  let content = headers.map(escaparCSV).join(',') + '\n';
+  rows.forEach(row => {
+    content += row.map(escaparCSV).join(',') + '\n';
+  });
+  const blob = new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+/* ================================================================
+   PESTAÑAS
+   ================================================================ */
+function cambiarPestana(name) {
+  document.querySelectorAll('.tab-panel').forEach(panel => {
+    panel.classList.toggle('hidden', panel.id !== `tab-${name}`);
+  });
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    const active = btn.dataset.tab === name;
+    btn.classList.toggle('border-brand-500', active);
+    btn.classList.toggle('text-brand-600', active);
+    btn.classList.toggle('border-transparent', !active);
+    btn.classList.toggle('text-ink-600', !active);
+  });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/* ================================================================
+   PORTADA DE TRABAJOS
+   Solo resume y abre la interfaz existente. No modifica datos.
+   ================================================================ */
+function renderizarInicio() {
+  const ventas = estadoApp.ventas || [];
+
+  const pendientes = ventas.filter(
+    v => !v.entregado && (v.estado === 'En Lista' || !v.estado)
+  ).length;
+
+  const enProceso = ventas.filter(
+    v => !v.entregado && v.estado === 'En Proceso'
+  ).length;
+
+  const listos = ventas.filter(
+    v => !v.entregado && v.estado === 'Pronto'
+  ).length;
+
+  const porCobrar = ventas.reduce((total, v) => {
+    const saldo = Math.max(
+      (Number(v.pvp) || 0) - (Number(v.sena) || 0),
+      0
+    );
+
+    return total + saldo;
+  }, 0);
+
+  const asignar = (id, valor) => {
+    const elemento = document.getElementById(id);
+
+    if (elemento) {
+      elemento.textContent = valor;
+    }
+  };
+
+  asignar('home-pendientes', pendientes);
+  asignar('home-proceso', enProceso);
+  asignar('home-listos', listos);
+  asignar('home-cobros', formatearMonto(porCobrar));
+}
+
+function renderizarUltimosTrabajos() {
+  const contenedor = document.getElementById('home-ultimos-trabajos');
+  const vacio = document.getElementById('home-ultimos-vacio');
+
+  if (!contenedor || !vacio) return;
+
+  const trabajos = [...(estadoApp.ventas || [])]
+    .sort((a, b) => {
+      return (b.fecha_venta || '').localeCompare(a.fecha_venta || '');
+    })
+    .slice(0, 4);
+
+  contenedor.innerHTML = '';
+  vacio.classList.toggle('hidden', trabajos.length > 0);
+
+  trabajos.forEach(trabajo => {
+    const saldo = Math.max(
+      (Number(trabajo.pvp) || 0) - (Number(trabajo.sena) || 0),
+      0
+    );
+
+    const estado = trabajo.entregado
+      ? 'Entregado'
+      : trabajo.estado || 'En Lista';
+
+    const fila = document.createElement('button');
+
+    fila.type = 'button';
+    fila.onclick = () => abrirTrabajoDesdeInicio(trabajo.id);
+    fila.className =
+      'w-full flex items-center justify-between gap-3 p-4 text-left hover:bg-slate-50 transition-colors';
+
+    fila.innerHTML = `
+      <div class="min-w-0">
+        <p class="font-semibold text-sm text-ink-900 truncate">
+          ${escaparHtml(trabajo.cliente || 'Cliente sin nombre')}
+        </p>
+
+        <p class="text-xs text-ink-600 mt-0.5 truncate">
+          ${escaparHtml(trabajo.producto || 'Trabajo sin nombre')}
+        </p>
+
+        <p class="text-xs text-ink-400 mt-1">
+          ${formatearFecha(trabajo.fecha_venta)} · ${escaparHtml(estado)}
+        </p>
+      </div>
+
+      <div class="text-right shrink-0">
+        <p class="tabnum text-sm font-semibold ${saldo > 0 ? 'text-red-600' : 'text-green-600'}">
+          ${saldo > 0 ? formatearMonto(saldo) : 'Pago'}
+        </p>
+
+        <p class="text-[11px] text-ink-400 mt-1">
+          ${saldo > 0 ? 'por cobrar' : 'sin saldo'}
+        </p>
+      </div>
+    `;
+
+    contenedor.appendChild(fila);
+  });
+}
+
+function abrirTrabajos(tipo) {
+  const modal = document.getElementById('modal-lista-trabajos');
+  const contenido = document.getElementById('contenido-lista-trabajos');
+  const titulo = document.getElementById('titulo-lista-trabajos');
+  if (!modal || !contenido || !titulo) return;
+
+  const configuracion = {
+    gestion: {
+      titulo: 'Pendientes y pagos',
+      filtro: trabajo => !trabajo.entregado || Math.max((Number(trabajo.pvp) || 0) - (Number(trabajo.sena) || 0), 0) > 0
+    },
+    pendientes: {
+      titulo: 'Trabajos pendientes',
+      filtro: trabajo => !trabajo.entregado && (!trabajo.estado || trabajo.estado === 'En Lista'),
+      vista: 'pendientes'
+    },
+    proceso: {
+      titulo: 'Trabajos en proceso',
+      filtro: trabajo => !trabajo.entregado && trabajo.estado === 'En Proceso'
+    },
+    listos: {
+      titulo: 'Trabajos prontos',
+      filtro: trabajo => !trabajo.entregado && trabajo.estado === 'Pronto'
+    },
+    cobros: {
+      titulo: 'Registrar pago',
+      filtro: trabajo => Math.max((Number(trabajo.pvp) || 0) - (Number(trabajo.sena) || 0), 0) > 0,
+      vista: 'cobros'
+    }
+  }[tipo];
+
+  if (!configuracion) return;
+
+  const trabajos = [...(estadoApp.ventas || [])]
+    .filter(configuracion.filtro)
+    .sort((a, b) => (a.fecha_entrega || '9999-12-31').localeCompare(b.fecha_entrega || '9999-12-31'));
+
+  titulo.textContent = configuracion.titulo;
+
+  if (trabajos.length === 0) {
+    contenido.innerHTML = '<p class="p-6 text-center text-sm text-ink-400">No hay trabajos para mostrar.</p>';
+  } else {
+    contenido.innerHTML = trabajos.map(trabajo => {
+      const pagado = Number(trabajo.sena) || 0;
+      const saldo = Math.max((Number(trabajo.pvp) || 0) - (Number(trabajo.sena) || 0), 0);
+      const estado = trabajo.entregado ? 'Entregado' : (trabajo.estado || 'En Lista');
+
+      if (configuracion.vista === 'pendientes') {
+        return `
+          <button type="button" onclick="seleccionarTrabajoDeLista('${trabajo.id}')" class="w-full p-4 text-left hover:bg-slate-50 transition-colors">
+            <p class="font-semibold text-ink-900">${escaparHtml(trabajo.cliente || 'Cliente sin nombre')}</p>
+            <p class="mt-0.5 text-sm text-ink-600">${escaparHtml(trabajo.producto || 'Trabajo sin nombre')}</p>
+            <div class="mt-3 rounded-xl border border-slate-200 px-3">
+              <p class="flex justify-between gap-4 py-2 border-b border-slate-100 text-sm"><span class="text-ink-400">Fecha de venta</span> <strong>${formatearFecha(trabajo.fecha_venta)}</strong></p>
+              <p class="flex justify-between gap-4 py-2 text-sm"><span class="text-ink-400">Fecha de entrega</span> <strong>${formatearFecha(trabajo.fecha_entrega)}</strong></p>
+            </div>
+          </button>
+        `;
+      }
+
+      if (configuracion.vista === 'cobros') {
+        return `
+          <button type="button" onclick="seleccionarTrabajoDeLista('${trabajo.id}')" class="w-full p-4 text-left hover:bg-slate-50 transition-colors">
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <p class="font-semibold text-ink-900">${escaparHtml(trabajo.cliente || 'Cliente sin nombre')}</p>
+                <p class="mt-0.5 text-sm text-ink-600">${escaparHtml(trabajo.producto || 'Trabajo sin nombre')}</p>
+              </div>
+              <span class="shrink-0 text-xs font-semibold text-brand-600">Registrar pago →</span>
+            </div>
+            <div class="mt-3 grid grid-cols-2 gap-3">
+              <div class="rounded-xl bg-green-50 p-3">
+                <p class="text-xs text-green-600">Pagado</p>
+                <p class="mt-1 font-semibold text-green-700">${formatearMonto(pagado)}</p>
+              </div>
+              <div class="rounded-xl bg-red-50 p-3">
+                <p class="text-xs text-red-500">Saldo</p>
+                <p class="mt-1 font-semibold text-red-700">${formatearMonto(saldo)}</p>
+              </div>
+            </div>
+          </button>
+        `;
+      }
+
+      const costo = Number(trabajo.costo) || 0;
+      const pvp = Number(trabajo.pvp) || 0;
+      const observaciones = trabajo.observaciones || 'Sin observaciones';
+
+      return `
+        <button type="button" onclick="seleccionarTrabajoDeLista('${trabajo.id}')" class="w-full p-4 text-left hover:bg-slate-50 transition-colors">
+          <div class="flex items-start justify-between gap-3 mb-3">
+            <div class="min-w-0">
+              <p class="font-semibold text-ink-900">${escaparHtml(trabajo.cliente || 'Cliente sin nombre')}</p>
+              <p class="mt-0.5 text-sm text-ink-600">${escaparHtml(trabajo.producto || 'Trabajo sin nombre')}</p>
+              <p class="mt-1 text-xs font-medium text-brand-600">${escaparHtml(estado)}</p>
+            </div>
+            <span class="shrink-0 text-xs font-semibold text-brand-600">Ver detalle →</span>
+          </div>
+
+          <div class="rounded-xl border border-slate-200 px-3 mb-3">
+            <p class="flex justify-between gap-4 py-2 border-b border-slate-100 text-sm"><span class="text-ink-400">Fecha de venta</span> <strong>${formatearFecha(trabajo.fecha_venta)}</strong></p>
+            <p class="flex justify-between gap-4 py-2 border-b border-slate-100 text-sm"><span class="text-ink-400">Costo</span> <strong>${formatearMonto(costo)}</strong></p>
+            <p class="flex justify-between gap-4 py-2 text-sm"><span class="text-ink-400">Precio</span> <strong>${formatearMonto(pvp)}</strong></p>
+          </div>
+
+          <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+            <p><span class="text-ink-400">Pagado:</span> <strong class="text-green-700">${formatearMonto(pagado)}</strong></p>
+            <p><span class="text-ink-400">Saldo:</span> <strong class="${saldo > 0 ? 'text-red-600' : 'text-green-700'}">${formatearMonto(saldo)}</strong></p>
+            <p><span class="text-ink-400">Entrega:</span> <strong>${formatearFecha(trabajo.fecha_entrega)}</strong></p>
+          </div>
+
+          <p class="mt-3 text-sm text-ink-600"><span class="text-ink-400">Observaciones:</span> ${escaparHtml(observaciones)}</p>
+          <p class="mt-1 text-sm text-ink-600"><span class="text-ink-400">Proviene de publicidad:</span> ${trabajo.origen_publicidad ? 'Sí' : 'No'}</p>
+        </button>
+      `;
+    }).join('');
+  }
+
+  modal.classList.remove('hidden');
+  document.body.classList.add('overflow-hidden');
+}
+
+function cerrarListaTrabajos(event) {
+  if (event && event.target !== event.currentTarget) return;
+
+  const modal = document.getElementById('modal-lista-trabajos');
+  if (modal) modal.classList.add('hidden');
+  document.body.classList.remove('overflow-hidden');
+}
+
+function seleccionarTrabajoDeLista(id) {
+  cerrarListaTrabajos();
+  abrirTrabajoDesdeInicio(id);
+}
+
+function abrirTrabajoDesdeInicio(id) {
+  const trabajo = (estadoApp.ventas || []).find(v => String(v.id) === String(id));
+  const modal = document.getElementById('modal-detalle-trabajo');
+  const contenido = document.getElementById('contenido-detalle-trabajo');
+
+  if (!trabajo || !modal || !contenido) {
+    alert('No se pudo encontrar el trabajo seleccionado.');
+    return;
+  }
+
+  const pvp = Number(trabajo.pvp) || 0;
+  const costo = Number(trabajo.costo) || 0;
+  const sena = Number(trabajo.sena) || 0;
+  const saldo = Math.max(pvp - sena, 0);
+  const estado = trabajo.entregado ? 'Entregado' : (trabajo.estado || 'En Lista');
+  const cliente = trabajo.cliente || 'Cliente sin nombre';
+  const observaciones = trabajo.observaciones || '';
+
+  const filaDetalle = (etiqueta, valor, clases = '') => `
+    <div class="flex items-start justify-between gap-4 py-3 border-b border-slate-100 last:border-b-0">
+      <span class="text-sm text-ink-400">${etiqueta}</span>
+      <span class="text-sm font-semibold text-ink-900 text-right ${clases}">${valor}</span>
+    </div>
+  `;
+
+  contenido.innerHTML = `
+    <div class="mb-4">
+      <p class="text-xs font-semibold uppercase tracking-wide text-brand-600">Cliente</p>
+      <h3 class="font-display text-xl font-semibold text-ink-900 mt-1">
+        ${escaparHtml(cliente)}
+      </h3>
+      <p class="text-xs font-semibold uppercase tracking-wide text-ink-400 mt-3">Trabajo</p>
+      <p class="font-semibold text-ink-900 mt-1">${escaparHtml(trabajo.producto || 'Trabajo sin nombre')}</p>
+    </div>
+
+    <div class="rounded-xl border border-slate-200 px-4">
+      ${filaDetalle('Costo', formatearMonto(costo))}
+      ${filaDetalle('PVP', formatearMonto(pvp))}
+      ${filaDetalle('Seña / pagado', formatearMonto(sena))}
+      ${filaDetalle('Saldo', formatearMonto(saldo), saldo > 0 ? 'text-red-600' : 'text-green-600')}
+      ${filaDetalle('Fecha de venta', formatearFecha(trabajo.fecha_venta))}
+      ${filaDetalle('Fecha de entrega', formatearFecha(trabajo.fecha_entrega))}
+      ${filaDetalle('Estado', escaparHtml(estado))}
+      ${filaDetalle('Proviene de publicidad', trabajo.origen_publicidad ? 'Sí' : 'No')}
+      ${filaDetalle('Observaciones', observaciones ? escaparHtml(observaciones) : 'Sin observaciones')}
+    </div>
+
+    ${estado === 'Pronto' && !trabajo.entregado ? `
+      <button type="button" onclick="marcarTrabajoComoEntregado('${trabajo.id}')" class="w-full mt-5 rounded-xl bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-3 transition-colors">
+        ✅ Marcar como entregado
+      </button>
+    ` : ''}
+
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-5">
+      <button type="button" onclick="registrarPagoDesdeDetalle('${trabajo.id}')" class="rounded-xl bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-3 transition-colors">
+        Registrar pago
+      </button>
+      <button type="button" onclick="editarTrabajoDesdeDetalle('${trabajo.id}')" class="rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold px-4 py-3 transition-colors">
+        Editar
+      </button>
+      <button type="button" onclick="cerrarDetalleTrabajo()" class="rounded-xl border border-slate-300 hover:bg-slate-50 text-ink-800 font-semibold px-4 py-3 transition-colors">
+        Cerrar
+      </button>
+    </div>
+  `;
+
+  modal.dataset.trabajoId = String(trabajo.id);
+  modal.classList.remove('hidden');
+  document.body.classList.add('overflow-hidden');
+}
+
+async function marcarTrabajoComoEntregado(id) {
+  if (!confirm('¿Confirmás que este trabajo fue entregado?')) return;
+
+  await actualizarVenta(id, 'entregado', true);
+
+  const trabajoActualizado = (estadoApp.ventas || []).find(
+    venta => String(venta.id) === String(id)
+  );
+
+  if (trabajoActualizado?.entregado) {
+    cerrarDetalleTrabajo();
+  }
+}
+
+function cerrarDetalleTrabajo(event) {
+  if (event && event.target !== event.currentTarget) return;
+
+  const modal = document.getElementById('modal-detalle-trabajo');
+  if (!modal) return;
+
+  modal.classList.add('hidden');
+  modal.removeAttribute('data-trabajo-id');
+  document.body.classList.remove('overflow-hidden');
+}
+
+async function registrarPagoDesdeDetalle(id) {
+  const trabajo = (estadoApp.ventas || []).find(v => String(v.id) === String(id));
+  if (!trabajo) return;
+
+  const saldoActual = Math.max((Number(trabajo.pvp) || 0) - (Number(trabajo.sena) || 0), 0);
+  if (saldoActual <= 0) {
+    alert('Este trabajo no tiene saldo pendiente.');
+    return;
+  }
+
+  const entrada = prompt(`Saldo pendiente: ${formatearMonto(saldoActual)}\n\nIngresá el monto recibido:`);
+  if (entrada === null) return;
+
+  const monto = Number(String(entrada).replace(/\s/g, '').replace(',', '.'));
+  if (!Number.isFinite(monto) || monto <= 0) {
+    alert('Ingresá un monto válido mayor que cero.');
+    return;
+  }
+
+  if (monto > saldoActual && !confirm(`El pago supera el saldo pendiente por ${formatearMonto(monto - saldoActual)}. ¿Querés registrarlo igualmente?`)) {
+    return;
+  }
+
+  await actualizarVenta(id, 'sena', (Number(trabajo.sena) || 0) + monto);
+  abrirTrabajoDesdeInicio(id);
+}
+
+function editarTrabajoDesdeDetalle(id) {
+  cerrarDetalleTrabajo();
+  cambiarPestana('ventas');
+
+  setTimeout(() => {
+    const boton = document.querySelector(`button[onclick="eliminarVenta('${id}')"]`);
+    const fila = boton?.closest('tr');
+    if (!fila) return;
+
+    fila.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    fila.classList.add('bg-brand-50');
+    fila.querySelector('input[type="text"]')?.focus();
+
+    setTimeout(() => fila.classList.remove('bg-brand-50'), 2500);
+  }, 150);
+}
+
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') {
+    cerrarDetalleTrabajo();
+    cerrarListaTrabajos();
+  }
+});
+
+function accionPrincipal(accion) {
+  if (accion === 'pago') {
+    abrirTrabajos('cobros');
+    return;
+  }
+
+  if (accion === 'crear') {
+    abrirFlujoCrearTrabajo();
+    return;
+  }
+
+  cambiarPestana('ventas');
+  const formulario = document.getElementById('form-venta');
+  const tabla = document.getElementById('ventas-tbody');
+
+  tabla?.closest('.bg-white')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const mensajes = {
+    modificar: 'Elegí el trabajo y modificá el dato directamente en su fila.',
+    pendientes: 'Los trabajos pendientes figuran como "En Lista".',
+    cobros: 'Revisá la columna "Saldo" para ver lo que falta cobrar.',
+    todos: 'Acá podés ver y administrar todos tus trabajos.'
+  };
+  mostrarAvisoContextual(mensajes[accion] || 'Mostrando todos los trabajos.');
+}
+
+function abrirRegistroGasto() {
+  cambiarPestana('finanzas');
+
+  setTimeout(() => {
+    const formulario = document.getElementById('form-gasto');
+    if (!formulario) return;
+
+    formulario.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    formulario.querySelector('input, select, textarea')?.focus();
+  }, 120);
+}
+
+function mostrarAvisoContextual(mensaje) {
+  let aviso = document.getElementById('aviso-contextual');
+  if (!aviso) {
+    aviso = document.createElement('div');
+    aviso.id = 'aviso-contextual';
+    aviso.className = 'fixed left-4 right-4 bottom-4 sm:left-auto sm:right-6 sm:max-w-sm z-50 bg-ink-900 text-white text-sm rounded-xl shadow-xl px-4 py-3 transition-opacity';
+    document.body.appendChild(aviso);
+  }
+  aviso.textContent = mensaje;
+  aviso.classList.remove('opacity-0');
+  clearTimeout(aviso._timer);
+  aviso._timer = setTimeout(() => aviso.classList.add('opacity-0'), 3500);
+}
+
+/* ================================================================
+   VENTAS - CRUD contra Supabase (tabla ventas_taller)
+   ================================================================ */
+
+// Trae las ventas frescas desde Supabase, actualiza la caché en
+// memoria y repinta Ventas + Marketing + Finanzas (las tres pestañas
+// dependen, directa o indirectamente, de los datos de ventas).
+async function cargarVentas() {
+  try {
+    const { data, error } = await _supabase
+      .from('ventas_taller')
+      .select('*')
+      .order('fecha_venta', { ascending: false });
+
+    if (error) throw error;
+
+    estadoApp.ventas = data || [];
+  } catch (error) {
+    console.error('Error al cargar las ventas desde Supabase:', error.message);
+    alert('No se pudieron cargar las ventas. Revisá la consola y tu conexión con Supabase.');
+    return;
+  }
+
+  renderizarVentas();
+  renderizarMarketing();
+  renderizarFinanzas();
+  renderizarInicio();
+}
+
+// Inserta una venta nueva. OJO: nunca se envían `id` ni `created_at`,
+// Supabase los genera automáticamente al insertar.
+async function guardarNuevaVenta(event) {
+  event.preventDefault();
+
+  const boton = event.target.querySelector('button[type="submit"]');
+  const textoOriginalBoton = boton ? boton.innerHTML : null;
+
+  const cliente = document.getElementById('nv-cliente').value.trim();
+  if (!cliente) {
+    alert('Ingresá el nombre del cliente.');
+    document.getElementById('nv-cliente').focus();
+    return;
+  }
+
+  const nuevaVenta = {
+    fecha_venta: document.getElementById('nv-fecha').value,
+    cliente,
+    producto: document.getElementById('nv-producto').value.trim(),
+    costo: parseFloat(document.getElementById('nv-costo').value) || 0,
+    pvp: parseFloat(document.getElementById('nv-pvp').value) || 0,
+    sena: parseFloat(document.getElementById('nv-sena').value) || 0,
+    fecha_entrega: document.getElementById('nv-entrega').value || null,
+    estado: ESTADOS[0].value, // 'En Lista' por defecto; se cambia luego inline
+    origen_publicidad: document.getElementById('nv-publicidad').checked,
+    entregado: false,
+    observaciones: document.getElementById('nv-observaciones').value.trim() || null,
+  };
+
+  try {
+    if (boton) { boton.disabled = true; boton.innerHTML = 'Guardando…'; }
+
+    const { error } = await _supabase.from('ventas_taller').insert([nuevaVenta]);
+    if (error) throw error;
+
+    event.target.reset();
+    document.getElementById('nv-fecha').value = new Date().toISOString().slice(0, 10);
+
+    await cargarVentas();
+  } catch (error) {
+    console.error('Error al guardar la venta en Supabase:', error.message);
+    alert('Hubo un error al guardar la venta en la nube. Revisá la consola.');
+  } finally {
+    if (boton) { boton.disabled = false; boton.innerHTML = textoOriginalBoton; }
+  }
+}
+
+// Actualiza un único campo de una venta existente (edición inline en
+// la tabla). El nombre de `campo` debe ser siempre el nombre exacto
+// de la columna en Supabase (fecha_venta, fecha_entrega,
+// origen_publicidad, etc.), nunca el nombre "viejo" en camelCase.
+async function actualizarVenta(id, campo, valorCrudo) {
+  let valorFinal = valorCrudo;
+  const camposNumericos = ['costo', 'pvp', 'sena'];
+  const camposBooleanos = ['origen_publicidad', 'entregado'];
+
+  if (campo === 'cliente' && !String(valorCrudo || '').trim()) {
+    alert('El nombre del cliente es obligatorio.');
+    await cargarVentas();
+    return;
+  }
+
+  if (campo === 'cliente') {
+    valorFinal = String(valorCrudo).trim();
+  } else if (camposNumericos.includes(campo)) {
+    valorFinal = parseFloat(valorCrudo) || 0;
+  } else if (camposBooleanos.includes(campo)) {
+    valorFinal = !!valorCrudo;
+  } else if (valorCrudo === '') {
+    valorFinal = null; // fechas u observaciones vacías -> NULL, no string vacío
+  }
+
+  try {
+    const { error } = await _supabase
+      .from('ventas_taller')
+      .update({ [campo]: valorFinal })
+      .eq('id', id);
+
+    if (error) throw error;
+
+    // Recargamos desde Supabase: esto repinta Ventas y, en cascada,
+    // Marketing y Finanzas (por ejemplo, tildar "Entregado" suma el
+    // ingreso automático, y tildar "¿Publicidad?" mueve el ROI).
+    await cargarVentas();
+  } catch (error) {
+    console.error('Error al actualizar la venta en Supabase:', error.message);
+    alert('No se pudo actualizar la venta.');
+    await cargarVentas(); // volvemos a pintar el valor real de la base, por las dudas
+  }
+}
+
+async function eliminarVenta(id) {
+  if (!confirm('¿Eliminar esta venta? Esta acción no se puede deshacer.')) return;
+
+  try {
+    const { error } = await _supabase.from('ventas_taller').delete().eq('id', id);
+    if (error) throw error;
+
+    await cargarVentas();
+  } catch (error) {
+    console.error('Error al eliminar la venta en Supabase:', error.message);
+    alert('Hubo un problema al intentar eliminar la venta.');
+  }
+}
+
+// Pinta la tabla de Ventas y las tarjetas de resumen a partir de la
+// caché en memoria (estadoApp.ventas). No consulta Supabase: eso lo
+// hace siempre cargarVentas() antes de llamar a esta función.
+function renderizarVentas() {
+  const tbody = document.getElementById('ventas-tbody');
+  const vacio = document.getElementById('vacio');
+  if (!tbody) return;
+
+  tbody.innerHTML = ''; // limpieza total antes de reconstruir
+
+  const ventas = estadoApp.ventas;
+  if (vacio) vacio.classList.toggle('hidden', ventas.length > 0);
+
+  const ordenadas = [...ventas].sort((a, b) => (b.fecha_venta || '').localeCompare(a.fecha_venta || ''));
+
+  ordenadas.forEach(venta => {
+    const saldo = (Number(venta.pvp) || 0) - (Number(venta.sena) || 0);
+    const cfgEstado = obtenerConfigEstado(venta.estado);
+
+    const tr = document.createElement('tr');
+    tr.className = 'hover:bg-slate-50 align-middle';
+    tr.innerHTML = `
+      <td class="px-1"><input type="date" value="${venta.fecha_venta || ''}" onchange="actualizarVenta('${venta.id}','fecha_venta',this.value)" class="cell-input tabnum"></td>
+      <td class="px-1"><input required type="text" value="${escaparHtml(venta.cliente || 'Cliente sin nombre')}" onchange="actualizarVenta('${venta.id}','cliente',this.value)" class="cell-input font-medium"></td>
+      <td class="px-1"><input type="text" value="${escaparHtml(venta.producto)}" onchange="actualizarVenta('${venta.id}','producto',this.value)" class="cell-input font-medium"></td>
+      <td class="px-1"><input type="number" step="0.01" min="0" value="${venta.costo ?? 0}" onchange="actualizarVenta('${venta.id}','costo',this.value)" class="cell-input tabnum"></td>
+      <td class="px-1"><input type="number" step="0.01" min="0" value="${venta.pvp ?? 0}" onchange="actualizarVenta('${venta.id}','pvp',this.value)" class="cell-input tabnum"></td>
+      <td class="px-1"><input type="number" step="0.01" min="0" value="${venta.sena ?? 0}" onchange="actualizarVenta('${venta.id}','sena',this.value)" class="cell-input tabnum"></td>
+      <td class="px-3 tabnum font-semibold ${saldo > 0 ? 'text-red-600' : 'text-green-600'}">${formatearMonto(saldo)}</td>
+      <td class="px-1"><input type="date" value="${venta.fecha_entrega || ''}" onchange="actualizarVenta('${venta.id}','fecha_entrega',this.value)" class="cell-input tabnum"></td>
+      <td class="px-1">
+        <select onchange="actualizarVenta('${venta.id}','estado',this.value)" class="cell-input text-xs font-semibold border rounded-full text-center cursor-pointer ${cfgEstado.classes}">
+          ${ESTADOS.map(e => `<option value="${e.value}" ${e.value === venta.estado ? 'selected' : ''}>${e.value}</option>`).join('')}
+        </select>
+      </td>
+      <td class="px-1 text-center">
+        <input type="checkbox" ${venta.origen_publicidad ? 'checked' : ''} onchange="actualizarVenta('${venta.id}','origen_publicidad',this.checked)" class="w-4 h-4 rounded text-brand-500 focus:ring-brand-500 cursor-pointer">
+      </td>
+      <td class="px-1 text-center">
+        <input type="checkbox" ${venta.entregado ? 'checked' : ''} onchange="actualizarVenta('${venta.id}','entregado',this.checked)" class="w-4 h-4 rounded text-green-600 focus:ring-green-500 cursor-pointer">
+      </td>
+      <td class="px-1"><input type="text" value="${escaparHtml(venta.observaciones)}" placeholder="Sin observaciones" onchange="actualizarVenta('${venta.id}','observaciones',this.value)" class="cell-input text-ink-600"></td>
+      <td class="px-2 text-center">
+        <button onclick="eliminarVenta('${venta.id}')" title="Eliminar venta" class="text-ink-400 hover:text-red-600 transition-colors p-1">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        </button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  renderizarEstadisticasVentas();
+}
+
+function renderizarEstadisticasVentas() {
+  const ventas = estadoApp.ventas;
+  const totalVentas = ventas.length;
+  const totalPVP = ventas.reduce((sum, v) => sum + (Number(v.pvp) || 0), 0);
+  const saldoPendiente = ventas.reduce((sum, v) => sum + Math.max((Number(v.pvp) || 0) - (Number(v.sena) || 0), 0), 0);
+  const entregados = ventas.filter(v => v.entregado).length;
+
+  const stats = [
+    { label: 'Ventas totales', value: totalVentas, color: 'text-ink-900' },
+    { label: 'Facturación (PVP)', value: formatearMonto(totalPVP), color: 'text-ink-900' },
+    { label: 'Saldo por cobrar', value: formatearMonto(saldoPendiente), color: 'text-red-600' },
+    { label: 'Entregados', value: `${entregados} / ${totalVentas}`, color: 'text-green-600' },
+  ];
+
+  document.getElementById('ventas-stats').innerHTML = stats.map(s => `
+    <div class="bg-white rounded-xl shadow-card border border-slate-200 p-4">
+      <p class="text-xs font-medium text-ink-400 uppercase tracking-wide">${s.label}</p>
+      <p class="tabnum font-display font-bold text-xl ${s.color} mt-1">${s.value}</p>
+    </div>
+  `).join('');
+  renderizarInicio();
+}
+
+function exportarVentasCSV() {
+  const headers = ['Fecha de venta', 'Cliente', 'Trabajo', 'Costo', 'PVP', 'Seña', 'Saldo', 'Fecha de entrega', 'Estado', '¿Publicidad?', '¿Entregado?', 'Observaciones'];
+  const rows = estadoApp.ventas.map(v => {
+    const costo = Number(v.costo) || 0;
+    const pvp = Number(v.pvp) || 0;
+    const sena = Number(v.sena) || 0;
+    const saldo = pvp - sena;
+    return [
+      fechaCSV(v.fecha_venta),
+      v.cliente || 'Cliente sin nombre',
+      v.producto,
+      costo.toFixed(2),
+      pvp.toFixed(2),
+      sena.toFixed(2),
+      saldo.toFixed(2),
+      fechaCSV(v.fecha_entrega),
+      v.estado,
+      v.origen_publicidad ? 'Sí' : 'No',
+      v.entregado ? 'Sí' : 'No',
+      v.observaciones || '',
+    ];
+  });
+  descargarCSV('ventas.csv', headers, rows);
+}
+
+/* ================================================================
+   MARKETING Y ROI - CRUD contra Supabase (tabla gastos_publicidad)
+   Lee además estadoApp.ventas (caché) para saber qué ventas vinieron
+   de publicidad, sin volver a consultar ventas_taller.
+   ================================================================ */
+
+// Trae los gastos de publicidad frescos desde Supabase, actualiza la
+// caché y repinta Marketing (que combina esto con estadoApp.ventas).
+async function cargarPublicidad() {
+  try {
+    const { data, error } = await _supabase
+      .from('gastos_publicidad')
+      .select('*')
+      .order('fecha', { ascending: false });
+
+    if (error) throw error;
+
+    estadoApp.publicidad = data || [];
+  } catch (error) {
+    console.error('Error al cargar los gastos de publicidad desde Supabase:', error.message);
+    alert('No se pudieron cargar los gastos de publicidad. Revisá la consola.');
+    return;
+  }
+
+  renderizarMarketing();
+}
+
+async function agregarGastoPublicidad(event) {
+  event.preventDefault();
+
+  const nuevoGasto = {
+    fecha: document.getElementById('pu-fecha').value,
+    descripcion: document.getElementById('pu-descripcion').value.trim() || null,
+    monto: parseFloat(document.getElementById('pu-monto').value) || 0,
+  };
+
+  try {
+    const { error } = await _supabase.from('gastos_publicidad').insert([nuevoGasto]);
+    if (error) throw error;
+
+    event.target.reset();
+    document.getElementById('pu-fecha').value = new Date().toISOString().slice(0, 10);
+
+    await cargarPublicidad();
+  } catch (error) {
+    console.error('Error al guardar el gasto de publicidad en Supabase:', error.message);
+    alert('No se pudo guardar el gasto de publicidad.');
+  }
+}
+
+async function eliminarGastoPublicidad(id) {
+  if (!confirm('¿Eliminar este gasto de publicidad?')) return;
+
+  try {
+    const { error } = await _supabase.from('gastos_publicidad').delete().eq('id', id);
+    if (error) throw error;
+
+    await cargarPublicidad();
+  } catch (error) {
+    console.error('Error al eliminar el gasto de publicidad en Supabase:', error.message);
+    alert('No se pudo eliminar el gasto de publicidad.');
+  }
+}
+
+// Pinta toda la pestaña de Marketing (tabla de ventas de solo lectura,
+// tabla de gastos, y las 3 tarjetas de ROI) a partir de la caché en
+// memoria (estadoApp.ventas + estadoApp.publicidad).
+function renderizarMarketing() {
+  const tbodyVentas = document.getElementById('marketing-tbody');
+  const vacioVentas = document.getElementById('marketing-empty');
+  if (!tbodyVentas) return;
+
+  tbodyVentas.innerHTML = '';
+  vacioVentas.classList.toggle('hidden', estadoApp.ventas.length > 0);
+
+  const ventasOrdenadas = [...estadoApp.ventas].sort((a, b) => (b.fecha_venta || '').localeCompare(a.fecha_venta || ''));
+  ventasOrdenadas.forEach(venta => {
+    const tr = document.createElement('tr');
+    tr.className = 'hover:bg-slate-50';
+    tr.innerHTML = `
+      <td class="px-3 py-2 tabnum">${formatearFecha(venta.fecha_venta)}</td>
+      <td class="px-3 py-2 font-medium">
+        <span class="block">${escaparHtml(venta.cliente || 'Cliente sin nombre')}</span>
+        <span class="block text-xs font-normal text-ink-400">${escaparHtml(venta.producto || 'Trabajo sin nombre')}</span>
+      </td>
+      <td class="px-3 py-2">
+        <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${venta.origen_publicidad ? 'bg-brand-100 text-brand-700' : 'bg-slate-100 text-ink-400'}">
+          ${venta.origen_publicidad ? 'Sí' : 'No'}
+        </span>
+      </td>
+    `;
+    tbodyVentas.appendChild(tr);
+  });
+
+  const tbodyGastos = document.getElementById('publicidad-tbody');
+  const vacioGastos = document.getElementById('publicidad-empty');
+  tbodyGastos.innerHTML = '';
+  vacioGastos.classList.toggle('hidden', estadoApp.publicidad.length > 0);
+
+  const gastosOrdenados = [...estadoApp.publicidad].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+  gastosOrdenados.forEach(gasto => {
+    const tr = document.createElement('tr');
+    tr.className = 'hover:bg-slate-50';
+    tr.innerHTML = `
+      <td class="px-3 py-2 tabnum">${formatearFecha(gasto.fecha)}</td>
+      <td class="px-3 py-2">${escaparHtml(gasto.descripcion) || '<span class="text-ink-400">-</span>'}</td>
+      <td class="px-3 py-2 tabnum font-semibold text-red-600">${formatearMonto(gasto.monto)}</td>
+      <td class="px-2 text-center">
+        <button onclick="eliminarGastoPublicidad('${gasto.id}')" title="Eliminar gasto" class="text-ink-400 hover:text-red-600 transition-colors p-1">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        </button>
+      </td>
+    `;
+    tbodyGastos.appendChild(tr);
+  });
+
+  // --- Cálculo de ROI en tiempo real, con lo que hay en la caché ---
+  const gananciaBruta = estadoApp.ventas
+    .filter(v => v.origen_publicidad)
+    .reduce((sum, v) => sum + ((Number(v.pvp) || 0) - (Number(v.costo) || 0)), 0);
+
+  const gastoTotal = estadoApp.publicidad.reduce((sum, p) => sum + (Number(p.monto) || 0), 0);
+  const margenReal = gananciaBruta - gastoTotal;
+
+  document.getElementById('mk-ganancia-bruta').textContent = formatearMonto(gananciaBruta);
+  document.getElementById('mk-gasto-total').textContent = formatearMonto(gastoTotal);
+  const margenEl = document.getElementById('mk-margen-real');
+  margenEl.textContent = formatearMonto(margenReal);
+  margenEl.parentElement.classList.toggle('bg-red-600', margenReal < 0);
+  margenEl.parentElement.classList.toggle('bg-brand-500', margenReal >= 0);
+}
+
+function exportarVentasPublicidadCSV() {
+  const headers = ['Fecha', 'Cliente', 'Trabajo', '¿Proviene de publicidad?'];
+  const rows = estadoApp.ventas.map(v => [fechaCSV(v.fecha_venta), v.cliente || 'Cliente sin nombre', v.producto, v.origen_publicidad ? 'Sí' : 'No']);
+  descargarCSV('marketing_ventas.csv', headers, rows);
+}
+
+function exportarGastosPublicidadCSV() {
+  const headers = ['Fecha de carga', 'Descripción', 'Monto'];
+  const rows = estadoApp.publicidad.map(p => [fechaCSV(p.fecha), p.descripcion, (Number(p.monto) || 0).toFixed(2)]);
+  descargarCSV('gastos_publicidad.csv', headers, rows);
+}
+
+/* ================================================================
+   FINANZAS MENSUALES - CRUD contra Supabase (tabla gastos_taller)
+   Lee además estadoApp.ventas (caché) para calcular los ingresos
+   automáticos de ventas entregadas, sin volver a consultar
+   ventas_taller.
+   ================================================================ */
+
+// Trae los gastos manuales frescos desde Supabase, actualiza la caché
+// y repinta Finanzas (que combina esto con estadoApp.ventas).
+async function cargarGastos() {
+  try {
+    const { data, error } = await _supabase
+      .from('gastos_taller')
+      .select('*')
+      .order('fecha', { ascending: false });
+
+    if (error) throw error;
+
+    estadoApp.gastos = data || [];
+  } catch (error) {
+    console.error('Error al cargar los gastos desde Supabase:', error.message);
+    alert('No se pudieron cargar los gastos. Revisá la consola.');
+    return;
+  }
+
+  poblarFiltroMes();
+  renderizarFinanzas();
+}
+
+// Combina los gastos cargados a mano (estadoApp.gastos) con los
+// ingresos automáticos, que se recalculan en cada llamada a partir de
+// las ventas entregadas (estadoApp.ventas) - nunca se guardan aparte
+// en Supabase, así que tildar/destildar "Entregado" suma o resta el
+// ingreso solo, sin desincronizarse.
+//
+// Regla de negocio (tal cual se pidió):
+//   - Monto del ingreso  = PVP completo de la venta (no el Saldo).
+//   - Mes del ingreso    = mes de la Fecha de Venta (no la de entrega).
+function mergeFinanzas() {
+  const ingresosAutomaticos = estadoApp.ventas
+    .filter(venta => venta.entregado)
+    .map(venta => ({
+      id: 'auto-' + venta.id,
+      fecha: venta.fecha_venta,
+      categoria: 'Ingresos',
+      descripcion: `Venta entregada: ${venta.producto || 'Producto sin nombre'}`,
+      monto: Number(venta.pvp) || 0,
+      automatico: true,   // solo lectura: se edita tildando/destildando la venta
+      ventaId: venta.id,
+    }));
+
+  return [...estadoApp.gastos, ...ingresosAutomaticos];
+}
+
+// Recorre el estado combinado (a través del merge) y devuelve solo
+// los movimientos del mes/año pedidos.
+// mes: 1-12 - anio: número de 4 dígitos - o mes === 'all' para no filtrar.
+function filtrarFinanzas(mes, anio) {
+  const movimientos = mergeFinanzas();
+  if (mes === 'all' || anio === 'all') return movimientos;
+
+  return movimientos.filter(mov => {
+    if (!mov.fecha) return false;
+    const partes = mov.fecha.split('-'); // 'YYYY-MM-DD'
+    const anioMov = Number(partes[0]);
+    const mesMov = Number(partes[1]);
+    return mesMov === Number(mes) && anioMov === Number(anio);
+  });
+}
+
+async function agregarGasto(event) {
+  event.preventDefault();
+
+  const nuevoGasto = {
+    fecha: document.getElementById('fz-fecha').value,
+    categoria: document.getElementById('fz-categoria').value,
+    descripcion: document.getElementById('fz-descripcion').value.trim(),
+    monto: parseFloat(document.getElementById('fz-monto').value) || 0,
+  };
+
+  try {
+    const { error } = await _supabase.from('gastos_taller').insert([nuevoGasto]);
+    if (error) throw error;
+
+    // Saltamos automáticamente al período del gasto recién cargado
+    const [anio, mes] = nuevoGasto.fecha.split('-').map(Number);
+    filtroActual = { mes, anio };
+
+    event.target.reset();
+    document.getElementById('fz-fecha').value = new Date().toISOString().slice(0, 10);
+
+    await cargarGastos();
+  } catch (error) {
+    console.error('Error al guardar el gasto en Supabase:', error.message);
+    alert('No se pudo guardar el gasto.');
+  }
+}
+
+async function eliminarGasto(id) {
+  if (!confirm('¿Eliminar este gasto?')) return;
+
+  try {
+    const { error } = await _supabase.from('gastos_taller').delete().eq('id', id);
+    if (error) throw error;
+
+    await cargarGastos();
+  } catch (error) {
+    console.error('Error al eliminar el gasto en Supabase:', error.message);
+    alert('No se pudo eliminar el gasto.');
+  }
+}
+
+// PUNTO 4: se llama en cada cambio del <select> y hace un refresco
+// completo del DOM (tabla + resumen) para el período elegido.
+function cambiarFiltroMes(valor) {
+  if (valor === 'all') {
+    filtroActual = { mes: 'all', anio: 'all' };
+  } else {
+    const [anio, mes] = valor.split('-').map(Number);
+    filtroActual = { mes, anio };
+  }
+  renderizarFinanzas();
+}
+
+// Reconstruye las opciones del <select> de período a partir de TODOS
+// los movimientos (gastos manuales + ingresos automáticos de ventas),
+// preservando el período elegido si sigue existiendo.
+function poblarFiltroMes() {
+  const periodos = new Set(
+    mergeFinanzas().map(m => (m.fecha || '').slice(0, 7)).filter(Boolean)
+  );
+  const actual = obtenerMesAnioActual();
+  periodos.add(`${actual.anio}-${String(actual.mes).padStart(2, '0')}`); // siempre ofrecer el mes actual
+
+  const listaOrdenada = [...periodos].sort((a, b) => b.localeCompare(a)); // más reciente primero
+
+  const valorPrevio = filtroActual.mes === 'all'
+    ? 'all'
+    : `${filtroActual.anio}-${String(filtroActual.mes).padStart(2, '0')}`;
+  const valorFinal = (valorPrevio === 'all' || listaOrdenada.includes(valorPrevio)) ? valorPrevio : listaOrdenada[0];
+
+  const select = document.getElementById('fz-filtro-mes');
+  select.innerHTML =
+    `<option value="all">Todos los períodos</option>` +
+    listaOrdenada.map(ym => {
+      const [anio, mes] = ym.split('-').map(Number);
+      return `<option value="${ym}" ${ym === valorFinal ? 'selected' : ''}>${etiquetaMes(mes, anio)}</option>`;
+    }).join('');
+  select.value = valorFinal;
+
+  // Sincronizamos el estado interno con lo que quedó seleccionado en el DOM
+  if (valorFinal === 'all') {
+    filtroActual = { mes: 'all', anio: 'all' };
+  } else {
+    const [anio, mes] = valorFinal.split('-').map(Number);
+    filtroActual = { mes, anio };
+  }
+}
+
+function renderizarFinanzas() {
+  const tbody = document.getElementById('finanzas-tbody');
+  const vacio = document.getElementById('finanzas-empty');
+  if (!tbody) return;
+
+  const movimientos = filtrarFinanzas(filtroActual.mes, filtroActual.anio)
+    .slice()
+    .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+
+  tbody.innerHTML = ''; // refresco completo del DOM antes de reconstruir
+  vacio.classList.toggle('hidden', movimientos.length > 0);
+
+  document.getElementById('fz-tabla-titulo').textContent =
+    'Movimientos - ' + (filtroActual.mes === 'all' ? 'todos los períodos' : etiquetaMes(filtroActual.mes, filtroActual.anio));
+
+  movimientos.forEach(mov => {
+    const esIngreso = mov.categoria === 'Ingresos';
+    const tr = document.createElement('tr');
+    tr.className = mov.automatico ? 'bg-brand-50/50 hover:bg-brand-50' : 'hover:bg-slate-50';
+    tr.innerHTML = `
+      <td class="px-3 py-2 tabnum">${formatearFecha(mov.fecha)}</td>
+      <td class="px-3 py-2">
+        <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${esIngreso ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-ink-600'}">
+          ${mov.categoria}
+        </span>
+        ${mov.automatico ? '<span class="ml-1 text-[10px] font-semibold uppercase tracking-wide text-brand-500" title="Generado automáticamente desde una venta entregada">(auto)</span>' : ''}
+      </td>
+      <td class="px-3 py-2">${escaparHtml(mov.descripcion)}</td>
+      <td class="px-3 py-2 tabnum font-semibold ${esIngreso ? 'text-green-600' : 'text-red-600'}">
+        ${esIngreso ? '+' : '-'} ${formatearMonto(mov.monto)}
+      </td>
+      <td class="px-2 text-center">
+        ${mov.automatico
+          ? `<span class="inline-block text-ink-300" title="Se edita desde la venta en la pestaña de Ventas">
+               <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+             </span>`
+          : `<button onclick="eliminarGasto('${mov.id}')" title="Eliminar gasto" class="text-ink-400 hover:text-red-600 transition-colors p-1">
+               <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+             </button>`
+        }
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  // --- Resumen del período: Balance Neto = Ingresos (auto) - Gastos (manuales) ---
+  const ingresoTotal = movimientos.filter(m => m.categoria === 'Ingresos').reduce((s, m) => s + (Number(m.monto) || 0), 0);
+  const gastoTotal = movimientos.filter(m => m.categoria !== 'Ingresos').reduce((s, m) => s + (Number(m.monto) || 0), 0);
+  const balanceNeto = ingresoTotal - gastoTotal;
+
+  document.getElementById('fz-ingreso-total').textContent = formatearMonto(ingresoTotal);
+  document.getElementById('fz-gasto-total').textContent = formatearMonto(gastoTotal);
+
+  const balanceEl = document.getElementById('fz-balance-neto');
+  const balanceCard = document.getElementById('fz-balance-card');
+  balanceEl.textContent = formatearMonto(balanceNeto);
+  balanceEl.classList.toggle('text-green-700', balanceNeto >= 0);
+  balanceEl.classList.toggle('text-red-700', balanceNeto < 0);
+  balanceCard.classList.toggle('bg-green-50', balanceNeto >= 0);
+  balanceCard.classList.toggle('border-green-200', balanceNeto >= 0);
+  balanceCard.classList.toggle('bg-red-50', balanceNeto < 0);
+  balanceCard.classList.toggle('border-red-200', balanceNeto < 0);
+}
+
+function exportarFinanzasCSV() {
+  const movimientos = filtrarFinanzas(filtroActual.mes, filtroActual.anio);
+  const headers = ['Fecha', 'Categoría', 'Descripción', 'Monto', 'Origen'];
+  const rows = movimientos.map(m => [
+    fechaCSV(m.fecha), m.categoria, m.descripcion, (Number(m.monto) || 0).toFixed(2),
+    m.automatico ? 'Automático (venta entregada)' : 'Manual',
+  ]);
+  const sufijo = filtroActual.mes === 'all' ? 'todos_los_periodos' : `${filtroActual.anio}-${String(filtroActual.mes).padStart(2, '0')}`;
+  descargarCSV(`finanzas_${sufijo}.csv`, headers, rows);
+}
+
+/* ================================================================
+   INICIALIZACIÓN
+   Trae las tres tablas de Supabase en paralelo y, con lo que vaya
+   respondiendo, deja las tres pestañas pintadas y sincronizadas.
+   ================================================================ */
+async function inicializar() {
+  filtroActual = obtenerMesAnioActual(); // arrancamos mostrando el mes en curso
+
+  // Fecha de hoy precargada por comodidad en los formularios de alta
+  const hoy = new Date().toISOString().slice(0, 10);
+  document.getElementById('nv-fecha').value = hoy;
+  document.getElementById('pu-fecha').value = hoy;
+  document.getElementById('fz-fecha').value = hoy;
+
+  cambiarPestana('inicio');
+
+  // Las tres consultas viajan en paralelo; cada una repinta su propia
+  // porción de la UI apenas responde, y al final dejamos todo
+  // consistente con un repintado final de Marketing y Finanzas.
+  await Promise.all([cargarVentas(), cargarGastos(), cargarPublicidad()]);
+
+  poblarFiltroMes();
+  renderizarFinanzas();
+  renderizarMarketing();
+}
+
+document.addEventListener('DOMContentLoaded', verificarSesion);
+
+/* ================================================================
+   PWA Y ACTUALIZACIONES
+   Una versión nueva nunca interrumpe una tarea en curso. El usuario
+   decide cuándo activarla mediante el aviso discreto de actualización.
+   ================================================================ */
+function mostrarAvisoActualizacion(registro) {
+  const aviso = document.getElementById('aviso-actualizacion');
+  const boton = document.getElementById('boton-actualizar-app');
+  if (!aviso || !boton || !registro.waiting) return;
+
+  aviso.classList.remove('hidden');
+  boton.onclick = () => {
+    boton.disabled = true;
+    boton.textContent = 'Actualizando...';
+    registro.waiting.postMessage({ type: 'SKIP_WAITING' });
+  };
+}
+
+/* ================================================================
+   CREAR TRABAJO CON GEMINI (AUDIO -> CONFIRMACIÓN -> ALTA EXISTENTE)
+   ================================================================ */
+let grabadorTrabajo = null;
+let streamGrabacionTrabajo = null;
+let fragmentosAudioTrabajo = [];
+let inicioGrabacionTrabajo = 0;
+let temporizadorGrabacionTrabajo = null;
+let grabacionCanceladaTrabajo = false;
+const LIMITE_GRABACION_SEGUNDOS = 60;
+const LIMITE_AUDIO_BYTES = 4 * 1024 * 1024;
+
+function mostrarPasoCrearTrabajo(idVisible) {
+  ['crear-trabajo-eleccion', 'crear-trabajo-grabacion', 'crear-trabajo-procesando', 'form-confirmacion-ia']
+    .forEach(id => document.getElementById(id)?.classList.toggle('hidden', id !== idVisible));
+}
+
+function abrirFlujoCrearTrabajo() {
+  document.getElementById('modal-crear-trabajo')?.classList.remove('hidden');
+  ocultarErrorCrearTrabajo();
+  mostrarPasoCrearTrabajo('crear-trabajo-eleccion');
+}
+
+function cerrarFlujoCrearTrabajo(event) {
+  if (event?.target !== event?.currentTarget) return;
+  cancelarGrabacionTrabajo(false);
+  document.getElementById('modal-crear-trabajo')?.classList.add('hidden');
+}
+
+function volverEleccionCrearTrabajo() {
+  cancelarGrabacionTrabajo(false);
+  ocultarErrorCrearTrabajo();
+  mostrarPasoCrearTrabajo('crear-trabajo-eleccion');
+}
+
+function abrirCargaManualTrabajo() {
+  cerrarFlujoCrearTrabajo();
+  cambiarPestana('ventas');
+  const formulario = document.getElementById('form-venta');
+  formulario?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  setTimeout(() => document.getElementById('nv-cliente')?.focus(), 350);
+}
+
+function elegirMimeAudio() {
+  const candidatos = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
+  return candidatos.find(tipo => window.MediaRecorder?.isTypeSupported?.(tipo)) || '';
+}
+
+async function iniciarGrabacionTrabajo() {
+  ocultarErrorCrearTrabajo();
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+    mostrarErrorCrearTrabajo('Este navegador no permite grabar audio. Probá con Safari en iPhone o Chrome en Android, o usá “Cargar manualmente”.');
+    mostrarPasoCrearTrabajo('form-confirmacion-ia');
+    prepararConfirmacionTrabajo({});
+    return;
+  }
+
+  try {
+    streamGrabacionTrabajo = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mimeType = elegirMimeAudio();
+    grabadorTrabajo = mimeType ? new MediaRecorder(streamGrabacionTrabajo, { mimeType }) : new MediaRecorder(streamGrabacionTrabajo);
+    fragmentosAudioTrabajo = [];
+    grabacionCanceladaTrabajo = false;
+
+    grabadorTrabajo.addEventListener('dataavailable', evento => {
+      if (evento.data?.size) fragmentosAudioTrabajo.push(evento.data);
+    });
+    grabadorTrabajo.addEventListener('stop', procesarGrabacionTrabajo);
+    grabadorTrabajo.start(500);
+    inicioGrabacionTrabajo = Date.now();
+    actualizarDuracionGrabacionTrabajo();
+    temporizadorGrabacionTrabajo = setInterval(actualizarDuracionGrabacionTrabajo, 250);
+    mostrarPasoCrearTrabajo('crear-trabajo-grabacion');
+  } catch (error) {
+    console.error('No se pudo acceder al micrófono:', error);
+    const mensaje = error?.name === 'NotAllowedError'
+      ? 'El permiso del micrófono fue rechazado. Habilitalo en la configuración del navegador o cargá el trabajo manualmente.'
+      : 'No se pudo usar el micrófono. Verificá que no esté ocupado por otra aplicación e intentá nuevamente.';
+    mostrarPasoCrearTrabajo('form-confirmacion-ia');
+    prepararConfirmacionTrabajo({});
+    mostrarErrorCrearTrabajo(mensaje);
+  }
+}
+
+function actualizarDuracionGrabacionTrabajo() {
+  const segundos = Math.floor((Date.now() - inicioGrabacionTrabajo) / 1000);
+  const elemento = document.getElementById('duracion-grabacion');
+  if (elemento) elemento.textContent = `00:${String(Math.min(segundos, 59)).padStart(2, '0')}`;
+  if (segundos >= LIMITE_GRABACION_SEGUNDOS) detenerGrabacionTrabajo();
+}
+
+function detenerGrabacionTrabajo() {
+  if (grabadorTrabajo?.state === 'recording') grabadorTrabajo.stop();
+}
+
+function liberarMicrofonoTrabajo() {
+  clearInterval(temporizadorGrabacionTrabajo);
+  temporizadorGrabacionTrabajo = null;
+  streamGrabacionTrabajo?.getTracks().forEach(track => track.stop());
+  streamGrabacionTrabajo = null;
+}
+
+function cancelarGrabacionTrabajo(mostrarEleccion = true) {
+  grabacionCanceladaTrabajo = true;
+  if (grabadorTrabajo?.state === 'recording') grabadorTrabajo.stop();
+  liberarMicrofonoTrabajo();
+  fragmentosAudioTrabajo = [];
+  if (mostrarEleccion) mostrarPasoCrearTrabajo('crear-trabajo-eleccion');
+}
+
+async function procesarGrabacionTrabajo() {
+  liberarMicrofonoTrabajo();
+  if (grabacionCanceladaTrabajo) return;
+
+  const tipo = grabadorTrabajo?.mimeType || fragmentosAudioTrabajo[0]?.type || 'audio/webm';
+  const audio = new Blob(fragmentosAudioTrabajo, { type: tipo });
+  fragmentosAudioTrabajo = [];
+
+  if (!audio.size) {
+    mostrarPasoCrearTrabajo('form-confirmacion-ia');
+    prepararConfirmacionTrabajo({});
+    mostrarErrorCrearTrabajo('No se detectó audio. Intentá grabar nuevamente o usá la carga manual.');
+    return;
+  }
+  if (audio.size > LIMITE_AUDIO_BYTES) {
+    mostrarPasoCrearTrabajo('form-confirmacion-ia');
+    prepararConfirmacionTrabajo({});
+    mostrarErrorCrearTrabajo('El audio es demasiado largo. Grabá un mensaje de hasta 60 segundos.');
+    return;
+  }
+
+  mostrarPasoCrearTrabajo('crear-trabajo-procesando');
+  try {
+    const sesion = (await _supabase.auth.getSession()).data.session;
+    if (!sesion?.access_token) throw new Error('Tu sesión venció. Volvé a iniciar sesión.');
+    const audioBase64 = await blobADataBase64(audio);
+    const respuesta = await fetch('/api/interpretar-audio.js', {
+      method: 'POST',
+      cache: 'no-store',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${sesion.access_token}`
+      },
+      body: JSON.stringify({
+        audioBase64,
+        mimeType: tipo.split(';')[0],
+        fechaActual: fechaLocalISO()
+      })
+    });
+    const resultado = await respuesta.json().catch(() => ({}));
+    if (!respuesta.ok) throw new Error(resultado.error || 'No se pudo interpretar el audio.');
+    prepararConfirmacionTrabajo(resultado.trabajo || {});
+    mostrarPasoCrearTrabajo('form-confirmacion-ia');
+  } catch (error) {
+    console.error('Error al interpretar audio:', error);
+    prepararConfirmacionTrabajo({});
+    mostrarPasoCrearTrabajo('form-confirmacion-ia');
+    mostrarErrorCrearTrabajo(error.message || 'No se pudo interpretar el audio. Intentá nuevamente.');
+  }
+}
+
+function blobADataBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const lector = new FileReader();
+    lector.onload = () => resolve(String(lector.result).split(',')[1]);
+    lector.onerror = () => reject(new Error('No se pudo leer el audio grabado.'));
+    lector.readAsDataURL(blob);
+  });
+}
+
+function fechaLocalISO() {
+  const ahora = new Date();
+  const local = new Date(ahora.getTime() - ahora.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+}
+
+function prepararConfirmacionTrabajo(datos) {
+  const asignar = (id, valor) => { const campo = document.getElementById(id); if (campo) campo.value = valor ?? ''; };
+  asignar('ia-cliente', datos.cliente);
+  asignar('ia-trabajo', datos.trabajo);
+  asignar('ia-costo', datos.costo);
+  asignar('ia-precio', datos.precio);
+  asignar('ia-sena', datos.sena);
+  asignar('ia-fecha-entrega', datos.fecha_entrega);
+  asignar('ia-observaciones', datos.observaciones);
+}
+
+function mostrarErrorCrearTrabajo(mensaje) {
+  const error = document.getElementById('error-crear-trabajo');
+  if (!error) return;
+  error.textContent = mensaje;
+  error.classList.remove('hidden');
+}
+
+function ocultarErrorCrearTrabajo() {
+  const error = document.getElementById('error-crear-trabajo');
+  if (error) { error.textContent = ''; error.classList.add('hidden'); }
+}
+
+async function confirmarTrabajoIA(event) {
+  event.preventDefault();
+  ocultarErrorCrearTrabajo();
+  const formularioDestino = document.getElementById('form-venta');
+  const boton = document.getElementById('boton-confirmar-ia');
+  if (!formularioDestino) return;
+
+  const cliente = document.getElementById('ia-cliente').value.trim();
+  const trabajo = document.getElementById('ia-trabajo').value.trim();
+  if (!cliente || !trabajo) {
+    mostrarErrorCrearTrabajo('Cliente y trabajo son obligatorios.');
+    return;
+  }
+
+  document.getElementById('nv-fecha').value = fechaLocalISO();
+  document.getElementById('nv-cliente').value = cliente;
+  document.getElementById('nv-producto').value = trabajo;
+  document.getElementById('nv-costo').value = document.getElementById('ia-costo').value || '0';
+  document.getElementById('nv-pvp').value = document.getElementById('ia-precio').value || '0';
+  document.getElementById('nv-sena').value = document.getElementById('ia-sena').value || '0';
+  document.getElementById('nv-entrega').value = document.getElementById('ia-fecha-entrega').value;
+  document.getElementById('nv-observaciones').value = document.getElementById('ia-observaciones').value.trim();
+  document.getElementById('nv-publicidad').checked = false;
+
+  boton.disabled = true;
+  boton.textContent = 'Guardando…';
+  cerrarFlujoCrearTrabajo();
+  formularioDestino.requestSubmit();
+  setTimeout(() => { boton.disabled = false; boton.textContent = 'Guardar trabajo'; }, 1000);
+}
+
+async function registrarServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+
+  try {
+    const registro = await navigator.serviceWorker.register('./service-worker.js', {
+      scope: './',
+      updateViaCache: 'none'
+    });
+
+    if (registro.waiting && navigator.serviceWorker.controller) {
+      mostrarAvisoActualizacion(registro);
+    }
+
+    registro.addEventListener('updatefound', () => {
+      const nuevoWorker = registro.installing;
+      if (!nuevoWorker) return;
+
+      nuevoWorker.addEventListener('statechange', () => {
+        if (nuevoWorker.state === 'installed' && navigator.serviceWorker.controller) {
+          mostrarAvisoActualizacion(registro);
+        }
+      });
+    });
+
+    let recargarPorActualizacion = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (recargarPorActualizacion) return;
+      recargarPorActualizacion = true;
+      window.location.reload();
+    });
+
+    window.addEventListener('focus', () => registro.update());
+  } catch (error) {
+    console.warn('La app funciona, pero no se pudo activar el modo instalable:', error);
+  }
+}
+
+window.addEventListener('load', registrarServiceWorker);
+</script>
+</body>
+</html>
