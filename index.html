@@ -2180,8 +2180,25 @@ async function procesarGrabacionTrabajo() {
 
   mostrarPasoCrearTrabajo('crear-trabajo-procesando');
   try {
-    const sesion = (await _supabase.auth.getSession()).data.session;
-    if (!sesion?.access_token) throw new Error('Tu sesión venció. Volvé a iniciar sesión.');
+   const {
+  data: { session: sesionActual },
+  error: errorSesion
+} = await _supabase.auth.getSession();
+
+if (errorSesion || !sesionActual) {
+  throw new Error('Tu sesión venció. Volvé a iniciar sesión.');
+}
+
+const {
+  data: { session: sesionRenovada },
+  error: errorRenovacion
+} = await _supabase.auth.refreshSession();
+
+const sesion = errorRenovacion ? sesionActual : sesionRenovada;
+
+if (!sesion?.access_token) {
+  throw new Error('Tu sesión venció. Volvé a iniciar sesión.');
+}
     const audioBase64 = await blobADataBase64(audio);
     const respuesta = await fetch('/api/interpretar-audio.js', {
       method: 'POST',
