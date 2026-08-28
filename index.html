@@ -269,13 +269,7 @@
         <button type="button" onclick="accionPrincipal('modificar')" class="home-action w-full flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-left font-semibold text-ink-900 shadow-sm hover:border-brand-300 hover:bg-brand-50 transition-all">
           <span aria-hidden="true">🔎</span><span>Buscar o modificar trabajo</span>
         </button>
-        <button type="button" onclick="abrirTrabajos('cobros')" class="home-action w-full flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-left font-semibold text-ink-900 shadow-sm hover:border-brand-300 hover:bg-brand-50 transition-all">
-          <span aria-hidden="true">💵</span><span>Registrar pago</span>
-        </button>
-        <button type="button" onclick="abrirTrabajos('pendientes')" class="home-action w-full flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-left font-semibold text-ink-900 shadow-sm hover:border-brand-300 hover:bg-brand-50 transition-all">
-          <span aria-hidden="true">📋</span><span>Ver pendientes</span>
-        </button>
-        <button type="button" onclick="abrirRegistroGasto()" class="home-action w-full flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-left font-semibold text-ink-900 shadow-sm hover:border-brand-300 hover:bg-brand-50 transition-all">
+         <button type="button" onclick="abrirRegistroGasto()" class="home-action w-full flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-left font-semibold text-ink-900 shadow-sm hover:border-brand-300 hover:bg-brand-50 transition-all">
           <span aria-hidden="true">💸</span><span>Registrar gasto</span>
         </button>
         <button type="button" onclick="cambiarPestana('finanzas')" class="home-action w-full flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-left font-semibold text-ink-900 shadow-sm hover:border-brand-300 hover:bg-brand-50 transition-all">
@@ -838,9 +832,8 @@ const CONFIG = {
 /* Estados posibles de una venta y su color asociado. Para agregar o
    quitar un estado, o cambiar un color, editá este array. */
 const ESTADOS = [
-  { value: 'En Lista',   classes: 'bg-red-100 text-red-800 border-red-300 focus:ring-red-400',       dot: 'bg-red-500'    },
   { value: 'En Proceso', classes: 'bg-yellow-100 text-yellow-800 border-yellow-300 focus:ring-yellow-400', dot: 'bg-yellow-500' },
-  { value: 'Pronto',     classes: 'bg-green-100 text-green-800 border-green-300 focus:ring-green-400',   dot: 'bg-green-500'  },
+  { value: 'Pronto',     classes: 'bg-green-100 text-green-800 border-green-300 focus:ring-green-400', dot: 'bg-green-500' },
 ];
 
 /* Categorías de gastos manuales en Finanzas. Los ingresos NO están acá
@@ -1439,7 +1432,7 @@ async function guardarNuevaVenta(event) {
     pvp: parseFloat(document.getElementById('nv-pvp').value) || 0,
     sena: parseFloat(document.getElementById('nv-sena').value) || 0,
     fecha_entrega: document.getElementById('nv-entrega').value || null,
-    estado: ESTADOS[0].value, // 'En Lista' por defecto; se cambia luego inline
+    estado: 'En Proceso',
     origen_publicidad: document.getElementById('nv-publicidad').checked,
     entregado: false,
     observaciones: document.getElementById('nv-observaciones').value.trim() || null,
@@ -1521,6 +1514,12 @@ async function eliminarVenta(id) {
   }
 }
 
+function formatearFechaCorta(fecha) {
+  if (!fecha) return '';
+  const [anio, mes, dia] = fecha.split('-');
+  return `${Number(dia)}/${Number(mes)}/${String(anio).slice(-2)}`;
+}
+
 // Pinta la tabla de Ventas y las tarjetas de resumen a partir de la
 // caché en memoria (estadoApp.ventas). No consulta Supabase: eso lo
 // hace siempre cargarVentas() antes de llamar a esta función.
@@ -1543,15 +1542,30 @@ function renderizarVentas() {
     const tr = document.createElement('tr');
     tr.className = 'hover:bg-slate-50 align-middle';
     tr.innerHTML = `
-      <td class="px-1"><input type="date" value="${venta.fecha_venta || ''}" onchange="actualizarVenta('${venta.id}','fecha_venta',this.value)" class="cell-input tabnum"></td>
-      <td class="px-1"><input required type="text" value="${escaparHtml(venta.cliente || 'Cliente sin nombre')}" onchange="actualizarVenta('${venta.id}','cliente',this.value)" class="cell-input font-medium"></td>
-      <td class="px-1"><input type="text" value="${escaparHtml(venta.producto)}" onchange="actualizarVenta('${venta.id}','producto',this.value)" class="cell-input font-medium"></td>
-      <td class="px-1"><input type="number" step="0.01" min="0" value="${venta.costo ?? 0}" onchange="actualizarVenta('${venta.id}','costo',this.value)" class="cell-input tabnum"></td>
+<td class="px-1 w-20">
+  <input
+    type="text"
+    value="${formatearFechaCorta(venta.fecha_venta)}"
+    onfocus="this.type='date'; this.value='${venta.fecha_venta || ''}'"
+    onblur="const v=this.value; this.type='text'; this.value=formatearFechaCorta(v)"
+    onchange="actualizarVenta('${venta.id}','fecha_venta',this.value)"
+    class="cell-input tabnum text-center text-xs"
+  >
+</td>      <td class="px-1 min-w-[140px]"><input required type="text" value="${escaparHtml(venta.cliente || 'Cliente sin nombre')}" onchange="actualizarVenta('${venta.id}','cliente',this.value)" class="cell-input font-medium"></td>      
+      <td class="px-1 min-w-[180px]"><input type="text" value="${escaparHtml(venta.producto)}" onchange="actualizarVenta('${venta.id}','producto',this.value)" class="cell-input font-medium"></td>      <td class="px-1"><input type="number" step="0.01" min="0" value="${venta.costo ?? 0}" onchange="actualizarVenta('${venta.id}','costo',this.value)" class="cell-input tabnum"></td>
       <td class="px-1"><input type="number" step="0.01" min="0" value="${venta.pvp ?? 0}" onchange="actualizarVenta('${venta.id}','pvp',this.value)" class="cell-input tabnum"></td>
       <td class="px-1"><input type="number" step="0.01" min="0" value="${venta.sena ?? 0}" onchange="actualizarVenta('${venta.id}','sena',this.value)" class="cell-input tabnum"></td>
       <td class="px-3 tabnum font-semibold ${saldo > 0 ? 'text-red-600' : 'text-green-600'}">${formatearMonto(saldo)}</td>
-      <td class="px-1"><input type="date" value="${venta.fecha_entrega || ''}" onchange="actualizarVenta('${venta.id}','fecha_entrega',this.value)" class="cell-input tabnum"></td>
-      <td class="px-1">
+<td class="px-1 w-20">
+  <input
+    type="text"
+    value="${formatearFechaCorta(venta.fecha_entrega)}"
+    onfocus="this.type='date'; this.value='${venta.fecha_entrega || ''}'"
+    onblur="const v=this.value; this.type='text'; this.value=formatearFechaCorta(v)"
+    onchange="actualizarVenta('${venta.id}','fecha_entrega',this.value)"
+    class="cell-input tabnum text-center text-xs"
+  >
+</td>      <td class="px-1">
         <select onchange="actualizarVenta('${venta.id}','estado',this.value)" class="cell-input text-xs font-semibold border rounded-full text-center cursor-pointer ${cfgEstado.classes}">
           ${ESTADOS.map(e => `<option value="${e.value}" ${e.value === venta.estado ? 'selected' : ''}>${e.value}</option>`).join('')}
         </select>
@@ -1809,16 +1823,28 @@ function mergeFinanzas() {
   const ingresosAutomaticos = estadoApp.ventas
     .filter(venta => venta.entregado)
     .map(venta => ({
-      id: 'auto-' + venta.id,
+      id: 'auto-ingreso-' + venta.id,
       fecha: venta.fecha_venta,
       categoria: 'Ingresos',
       descripcion: `Venta entregada: ${venta.producto || 'Producto sin nombre'}`,
       monto: Number(venta.pvp) || 0,
-      automatico: true,   // solo lectura: se edita tildando/destildando la venta
+      automatico: true,
       ventaId: venta.id,
     }));
 
-  return [...estadoApp.gastos, ...ingresosAutomaticos];
+  const costosAutomaticos = estadoApp.ventas
+    .filter(venta => (Number(venta.costo) || 0) > 0)
+    .map(venta => ({
+      id: 'auto-costo-' + venta.id,
+      fecha: venta.fecha_venta,
+      categoria: 'Costo de trabajo',
+      descripcion: `Costo: ${venta.producto || 'Trabajo sin nombre'} - ${venta.cliente || 'Cliente sin nombre'}`,
+      monto: Number(venta.costo) || 0,
+      automatico: true,
+      ventaId: venta.id,
+    }));
+
+  return [...estadoApp.gastos, ...ingresosAutomaticos, ...costosAutomaticos];
 }
 
 // Recorre el estado combinado (a través del merge) y devuelve solo
