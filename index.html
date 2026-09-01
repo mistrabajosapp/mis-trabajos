@@ -877,6 +877,12 @@ function formatearFecha(isoDate) {
   return `${d}/${m}/${y}`;
 }
 
+function formatearFechaCorta(fecha) {
+  if (!fecha) return '';
+  const [anio, mes, dia] = fecha.split('-');
+  return `${Number(dia)}/${Number(mes)}/${String(anio).slice(-2)}`;
+}
+
 function obtenerMesAnioActual() {
   const hoy = new Date();
   return { mes: hoy.getMonth() + 1, anio: hoy.getFullYear() };
