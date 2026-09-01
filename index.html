@@ -586,28 +586,41 @@
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div>
             <h2 class="font-display font-semibold text-ink-900">Resumen del período</h2>
-            <p class="text-xs text-ink-400">Ingreso = PVP de ventas entregadas ese mes - Gasto = movimientos cargados abajo</p>
+            <p class="text-xs text-ink-400">Facturación = trabajos vendidos · Cobrado = dinero recibido · Resultado real = cobrado menos gastos</p>
           </div>
           <div class="flex items-center gap-2">
             <label for="fz-filtro-mes" class="text-xs font-medium text-ink-600">Mostrar período:</label>
             <select id="fz-filtro-mes" onchange="cambiarFiltroMes(this.value)" class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500"></select>
           </div>
         </div>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div class="rounded-lg bg-green-50 border border-green-200 p-4">
-            <p class="text-xs font-medium text-green-700 uppercase tracking-wide">Ingreso total</p>
-            <p id="fz-ingreso-total" class="tabnum font-display font-bold text-2xl text-green-700 mt-1">$0.00</p>
-          </div>
-          <div class="rounded-lg bg-red-50 border border-red-200 p-4">
-            <p class="text-xs font-medium text-red-700 uppercase tracking-wide">Gasto total</p>
-            <p id="fz-gasto-total" class="tabnum font-display font-bold text-2xl text-red-700 mt-1">$0.00</p>
-          </div>
-          <div id="fz-balance-card" class="rounded-lg bg-slate-50 border border-slate-200 p-4">
-            <p class="text-xs font-medium text-ink-600 uppercase tracking-wide">Balance neto</p>
-            <p id="fz-balance-neto" class="tabnum font-display font-bold text-2xl text-ink-900 mt-1">$0.00</p>
-          </div>
-        </div>
-      </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+
+  <div class="rounded-lg bg-blue-50 border border-blue-200 p-4">
+    <p class="text-xs font-medium text-blue-700 uppercase tracking-wide">Facturación</p>
+    <p id="fz-facturacion-total" class="tabnum font-display font-bold text-2xl text-blue-700 mt-1">$0.00</p>
+  </div>
+
+  <div class="rounded-lg bg-green-50 border border-green-200 p-4">
+    <p class="text-xs font-medium text-green-700 uppercase tracking-wide">Cobrado</p>
+    <p id="fz-ingreso-total" class="tabnum font-display font-bold text-2xl text-green-700 mt-1">$0.00</p>
+  </div>
+
+  <div class="rounded-lg bg-amber-50 border border-amber-200 p-4">
+    <p class="text-xs font-medium text-amber-700 uppercase tracking-wide">Por cobrar actual</p>
+    <p id="fz-por-cobrar" class="tabnum font-display font-bold text-2xl text-amber-700 mt-1">$0.00</p>
+  </div>
+
+  <div class="rounded-lg bg-red-50 border border-red-200 p-4">
+    <p class="text-xs font-medium text-red-700 uppercase tracking-wide">Gastos</p>
+    <p id="fz-gasto-total" class="tabnum font-display font-bold text-2xl text-red-700 mt-1">$0.00</p>
+  </div>
+
+  <div id="fz-balance-card" class="rounded-lg bg-slate-50 border border-slate-200 p-4">
+    <p class="text-xs font-medium text-ink-600 uppercase tracking-wide">Resultado real</p>
+    <p id="fz-balance-neto" class="tabnum font-display font-bold text-2xl text-ink-900 mt-1">$0.00</p>
+  </div>
+
+</div>
 
       <!-- Formulario alta de gasto -->
       <div class="bg-white rounded-xl shadow-card border border-slate-200 p-4 sm:p-5">
@@ -648,7 +661,7 @@
         <div class="flex items-center justify-between p-4 sm:p-5 pb-3">
           <div>
             <h2 id="fz-tabla-titulo" class="font-display font-semibold text-ink-900">Movimientos</h2>
-            <p class="text-xs text-ink-400">Los ingresos marcados <span class="text-brand-500 font-semibold">(auto)</span> vienen de ventas entregadas en la pestaña de Ventas</p>
+            <p class="text-xs text-ink-400">Los cobros marcados <span class="text-brand-500 font-semibold">(auto)</span> corresponden a señas y pagos registrados en los trabajos</p>
           </div>
           <button onclick="exportarFinanzasCSV()" class="flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:text-brand-700 border border-brand-200 hover:bg-brand-50 rounded-lg px-3 py-1.5 transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
@@ -843,7 +856,7 @@ const CATEGORIAS_GASTOS = ['Materiales', 'Herramientas', 'Otros'];
 /* ================================================================
    ESTADO EN MEMORIA (caché de lo último que devolvió Supabase)
    ================================================================ */
-let estadoApp = { ventas: [], gastos: [], publicidad: [] };
+let estadoApp = { ventas: [], gastos: [], publicidad: [], pagos: [] };
 
 // Período actualmente elegido en el selector de Finanzas.
 // mes: 1-12, anio: número de 4 dígitos. O bien mes==='all' && anio==='all'.
@@ -1296,27 +1309,87 @@ async function registrarPagoDesdeDetalle(id) {
   const trabajo = (estadoApp.ventas || []).find(v => String(v.id) === String(id));
   if (!trabajo) return;
 
-  const saldoActual = Math.max((Number(trabajo.pvp) || 0) - (Number(trabajo.sena) || 0), 0);
+  const saldoActual = Math.max(
+    (Number(trabajo.pvp) || 0) - (Number(trabajo.sena) || 0),
+    0
+  );
+
   if (saldoActual <= 0) {
     alert('Este trabajo no tiene saldo pendiente.');
     return;
   }
 
-  const entrada = prompt(`Saldo pendiente: ${formatearMonto(saldoActual)}\n\nIngresá el monto recibido:`);
+  const entrada = prompt(
+    `Saldo pendiente: ${formatearMonto(saldoActual)}\n\nIngresá el monto recibido:`
+  );
+
   if (entrada === null) return;
 
-  const monto = Number(String(entrada).replace(/\s/g, '').replace(',', '.'));
+  const monto = Number(
+    String(entrada).replace(/\s/g, '').replace(',', '.')
+  );
+
   if (!Number.isFinite(monto) || monto <= 0) {
     alert('Ingresá un monto válido mayor que cero.');
     return;
   }
 
-  if (monto > saldoActual && !confirm(`El pago supera el saldo pendiente por ${formatearMonto(monto - saldoActual)}. ¿Querés registrarlo igualmente?`)) {
+  if (
+    monto > saldoActual &&
+    !confirm(
+      `El pago supera el saldo pendiente por ${formatearMonto(monto - saldoActual)}. ¿Querés registrarlo igualmente?`
+    )
+  ) {
     return;
   }
 
-  await actualizarVenta(id, 'sena', (Number(trabajo.sena) || 0) + monto);
-  abrirTrabajoDesdeInicio(id);
+  const ahora = new Date();
+  const fechaPago =
+    `${ahora.getFullYear()}-` +
+    `${String(ahora.getMonth() + 1).padStart(2, '0')}-` +
+    `${String(ahora.getDate()).padStart(2, '0')}`;
+
+  const nuevoPagado = (Number(trabajo.sena) || 0) + monto;
+
+  try {
+    const { data: pagoCreado, error: errorPago } = await _supabase
+      .from('pagos_taller')
+      .insert([{
+        venta_id: String(id),
+        fecha: fechaPago,
+        monto: monto,
+        tipo: 'Pago'
+      }])
+      .select('id')
+      .single();
+
+    if (errorPago) throw errorPago;
+
+    const { error: errorVenta } = await _supabase
+      .from('ventas_taller')
+      .update({ sena: nuevoPagado })
+      .eq('id', id);
+
+    if (errorVenta) {
+      await _supabase
+        .from('pagos_taller')
+        .delete()
+        .eq('id', pagoCreado.id);
+
+      throw errorVenta;
+    }
+
+    await Promise.all([
+      cargarVentas(),
+      cargarPagos()
+    ]);
+
+    abrirTrabajoDesdeInicio(id);
+
+  } catch (error) {
+    console.error('Error al registrar el pago:', error.message);
+    alert('No se pudo registrar el pago.');
+  }
 }
 
 function editarTrabajoDesdeDetalle(id) {
@@ -1455,13 +1528,41 @@ async function guardarNuevaVenta(event) {
   try {
     if (boton) { boton.disabled = true; boton.innerHTML = 'Guardando…'; }
 
-    const { error } = await _supabase.from('ventas_taller').insert([nuevaVenta]);
-    if (error) throw error;
+  const { data: ventaCreada, error } = await _supabase
+  .from('ventas_taller')
+  .insert([nuevaVenta])
+  .select('id')
+  .single();
+
+if (error) throw error;
+
+if (nuevaVenta.sena > 0) {
+  const { error: errorPago } = await _supabase
+    .from('pagos_taller')
+    .insert([{
+      venta_id: String(ventaCreada.id),
+      fecha: nuevaVenta.fecha_venta,
+      monto: nuevaVenta.sena,
+      tipo: 'Seña'
+    }]);
+
+  if (errorPago) {
+    await _supabase
+      .from('ventas_taller')
+      .delete()
+      .eq('id', ventaCreada.id);
+
+    throw errorPago;
+  }
+}
 
     event.target.reset();
     document.getElementById('nv-fecha').value = new Date().toISOString().slice(0, 10);
 
-    await cargarVentas();
+    await Promise.all([
+  cargarVentas(),
+  cargarPagos()
+]);
   } catch (error) {
     console.error('Error al guardar la venta en Supabase:', error.message);
     alert('Hubo un error al guardar la venta en la nube. Revisá la consola.');
@@ -1515,25 +1616,40 @@ async function actualizarVenta(id, campo, valorCrudo) {
 }
 
 async function eliminarVenta(id) {
-  if (!confirm('¿Eliminar esta venta? Esta acción no se puede deshacer.')) return;
+  if (!confirm('¿Eliminar este trabajo? También se eliminarán sus pagos registrados. Esta acción no se puede deshacer.')) {
+    return;
+  }
 
   try {
-    const { error } = await _supabase.from('ventas_taller').delete().eq('id', id);
-    if (error) throw error;
+    const { error: errorPagos } = await _supabase
+      .from('pagos_taller')
+      .delete()
+      .eq('venta_id', String(id));
 
-    await cargarVentas();
+    if (errorPagos) throw errorPagos;
+
+    const { error: errorVenta } = await _supabase
+      .from('ventas_taller')
+      .delete()
+      .eq('id', id);
+
+    if (errorVenta) throw errorVenta;
+
+    await Promise.all([
+      cargarVentas(),
+      cargarPagos()
+    ]);
+
   } catch (error) {
-    console.error('Error al eliminar la venta en Supabase:', error.message);
-    alert('Hubo un problema al intentar eliminar la venta.');
+    console.error('Error al eliminar el trabajo:', error.message);
+    alert('No se pudo eliminar el trabajo correctamente.');
+
+    await Promise.all([
+      cargarVentas(),
+      cargarPagos()
+    ]);
   }
 }
-
-function formatearFechaCorta(fecha) {
-  if (!fecha) return '';
-  const [anio, mes, dia] = fecha.split('-');
-  return `${Number(dia)}/${Number(mes)}/${String(anio).slice(-2)}`;
-}
-
 // Pinta la tabla de Ventas y las tarjetas de resumen a partir de la
 // caché en memoria (estadoApp.ventas). No consulta Supabase: eso lo
 // hace siempre cargarVentas() antes de llamar a esta función.
@@ -1568,8 +1684,8 @@ function renderizarVentas() {
 </td>      <td class="px-1 min-w-[140px]"><input required type="text" value="${escaparHtml(venta.cliente || 'Cliente sin nombre')}" onchange="actualizarVenta('${venta.id}','cliente',this.value)" class="cell-input font-medium"></td>      
       <td class="px-1 min-w-[180px]"><input type="text" value="${escaparHtml(venta.producto)}" onchange="actualizarVenta('${venta.id}','producto',this.value)" class="cell-input font-medium"></td>      <td class="px-1"><input type="number" step="0.01" min="0" value="${venta.costo ?? 0}" onchange="actualizarVenta('${venta.id}','costo',this.value)" class="cell-input tabnum"></td>
       <td class="px-1"><input type="number" step="0.01" min="0" value="${venta.pvp ?? 0}" onchange="actualizarVenta('${venta.id}','pvp',this.value)" class="cell-input tabnum"></td>
-      <td class="px-1"><input type="number" step="0.01" min="0" value="${venta.sena ?? 0}" onchange="actualizarVenta('${venta.id}','sena',this.value)" class="cell-input tabnum"></td>
-      <td class="px-3 tabnum font-semibold ${saldo > 0 ? 'text-red-600' : 'text-green-600'}">${formatearMonto(saldo)}</td>
+     <td class="px-3 tabnum font-medium text-ink-800">${formatearMonto(venta.sena)}</td>
+     <td class="px-3 tabnum font-semibold ${saldo > 0 ? 'text-red-600' : 'text-green-600'}">${formatearMonto(saldo)}</td>
 <td class="px-1 w-20">
   <input
     type="text"
@@ -1804,6 +1920,24 @@ function exportarGastosPublicidadCSV() {
 
 // Trae los gastos manuales frescos desde Supabase, actualiza la caché
 // y repinta Finanzas (que combina esto con estadoApp.ventas).
+async function cargarPagos() {
+  try {
+    const { data, error } = await _supabase
+      .from('pagos_taller')
+      .select('*')
+      .order('fecha', { ascending: false });
+
+    if (error) throw error;
+
+    estadoApp.pagos = data || [];
+  } catch (error) {
+    console.error('Error al cargar los pagos desde Supabase:', error.message);
+    alert('No se pudieron cargar los pagos. Revisá la consola.');
+    return;
+  }
+
+  renderizarFinanzas();
+}
 async function cargarGastos() {
   try {
     const { data, error } = await _supabase
@@ -1834,19 +1968,23 @@ async function cargarGastos() {
 //   - Monto del ingreso  = PVP completo de la venta (no el Saldo).
 //   - Mes del ingreso    = mes de la Fecha de Venta (no la de entrega).
 function mergeFinanzas() {
-  const ingresosAutomaticos = estadoApp.ventas
-    .filter(venta => venta.entregado)
-    .map(venta => ({
-      id: 'auto-ingreso-' + venta.id,
-      fecha: venta.fecha_venta,
-      categoria: 'Ingresos',
-      descripcion: `Venta entregada: ${venta.producto || 'Producto sin nombre'}`,
-      monto: Number(venta.pvp) || 0,
-      automatico: true,
-      ventaId: venta.id,
-    }));
+  const pagosAutomaticos = (estadoApp.pagos || []).map(pago => {
+    const venta = (estadoApp.ventas || []).find(
+      v => String(v.id) === String(pago.venta_id)
+    );
 
-  const costosAutomaticos = estadoApp.ventas
+    return {
+      id: 'auto-pago-' + pago.id,
+      fecha: pago.fecha,
+      categoria: 'Ingresos',
+      descripcion: `${pago.tipo || 'Pago'}: ${venta?.producto || 'Trabajo'} - ${venta?.cliente || 'Cliente'}`,
+      monto: Number(pago.monto) || 0,
+      automatico: true,
+      ventaId: pago.venta_id,
+    };
+  });
+
+  const costosAutomaticos = (estadoApp.ventas || [])
     .filter(venta => (Number(venta.costo) || 0) > 0)
     .map(venta => ({
       id: 'auto-costo-' + venta.id,
@@ -1858,7 +1996,11 @@ function mergeFinanzas() {
       ventaId: venta.id,
     }));
 
-  return [...estadoApp.gastos, ...ingresosAutomaticos, ...costosAutomaticos];
+  return [
+    ...(estadoApp.gastos || []),
+    ...pagosAutomaticos,
+    ...costosAutomaticos
+  ];
 }
 
 // Recorre el estado combinado (a través del merge) y devuelve solo
@@ -2011,13 +2153,58 @@ function renderizarFinanzas() {
     tbody.appendChild(tr);
   });
 
-  // --- Resumen del período: Balance Neto = Ingresos (auto) - Gastos (manuales) ---
-  const ingresoTotal = movimientos.filter(m => m.categoria === 'Ingresos').reduce((s, m) => s + (Number(m.monto) || 0), 0);
-  const gastoTotal = movimientos.filter(m => m.categoria !== 'Ingresos').reduce((s, m) => s + (Number(m.monto) || 0), 0);
-  const balanceNeto = ingresoTotal - gastoTotal;
+ // --- Resumen financiero del período seleccionado ---
 
-  document.getElementById('fz-ingreso-total').textContent = formatearMonto(ingresoTotal);
-  document.getElementById('fz-gasto-total').textContent = formatearMonto(gastoTotal);
+const ventasPeriodo = (estadoApp.ventas || []).filter(venta => {
+  if (filtroActual.mes === 'all' || filtroActual.anio === 'all') {
+    return true;
+  }
+
+  if (!venta.fecha_venta) return false;
+
+  const [anio, mes] = venta.fecha_venta.split('-').map(Number);
+
+  return (
+    mes === Number(filtroActual.mes) &&
+    anio === Number(filtroActual.anio)
+  );
+});
+
+const facturacionTotal = ventasPeriodo.reduce(
+  (total, venta) => total + (Number(venta.pvp) || 0),
+  0
+);
+
+const porCobrarActual = ventasPeriodo.reduce((total, venta) => {
+  const saldo = Math.max(
+    (Number(venta.pvp) || 0) - (Number(venta.sena) || 0),
+    0
+  );
+
+  return total + saldo;
+}, 0);
+
+const ingresoTotal = movimientos
+  .filter(m => m.categoria === 'Ingresos')
+  .reduce((total, m) => total + (Number(m.monto) || 0), 0);
+
+const gastoTotal = movimientos
+  .filter(m => m.categoria !== 'Ingresos')
+  .reduce((total, m) => total + (Number(m.monto) || 0), 0);
+
+const balanceNeto = ingresoTotal - gastoTotal;
+
+document.getElementById('fz-facturacion-total').textContent =
+  formatearMonto(facturacionTotal);
+
+document.getElementById('fz-ingreso-total').textContent =
+  formatearMonto(ingresoTotal);
+
+document.getElementById('fz-por-cobrar').textContent =
+  formatearMonto(porCobrarActual);
+
+document.getElementById('fz-gasto-total').textContent =
+  formatearMonto(gastoTotal);
 
   const balanceEl = document.getElementById('fz-balance-neto');
   const balanceCard = document.getElementById('fz-balance-card');
@@ -2060,7 +2247,7 @@ async function inicializar() {
   // Las tres consultas viajan en paralelo; cada una repinta su propia
   // porción de la UI apenas responde, y al final dejamos todo
   // consistente con un repintado final de Marketing y Finanzas.
-  await Promise.all([cargarVentas(), cargarGastos(), cargarPublicidad()]);
+ await Promise.all([cargarVentas(), cargarGastos(), cargarPublicidad(), cargarPagos()]);
 
   poblarFiltroMes();
   renderizarFinanzas();
